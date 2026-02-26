@@ -1,0 +1,67 @@
+app:
+  config_version: "test-1"
+  shadow_mode: false
+  log_level: WARNING
+
+llm_backend:
+  provider: ollama              # tests mock the client; provider value doesn't matter
+  ollama:
+    base_url: http://localhost:11434
+    model: llama3.2
+    timeout_seconds: 5
+  openai:
+    model: gpt-4o
+    timeout_seconds: 5
+  anthropic:
+    model: claude-sonnet-4-6
+    timeout_seconds: 5
+
+evaluators:
+  pii:
+    enabled: true
+    threshold: 0.5
+    action: redact
+  prompt_injection:
+    enabled: true
+    threshold: 0.80
+    model: "deepset/deberta-v3-base-injection"
+    device: cpu
+  topic_guardrail:
+    enabled: false
+    threshold: 0.30
+    allowed_topics: ["testing"]
+    embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+  toxicity:
+    enabled: true
+    threshold: 0.70
+    dimensions: [toxicity, threat]
+    flag_on: any
+  relevance:
+    enabled: true
+    threshold: 0.30
+    embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+  hallucination:
+    enabled: true
+    threshold: 0.70
+    model: "cross-encoder/nli-deberta-v3-base"
+    device: cpu
+  faithfulness:
+    enabled: true
+    threshold: 0.70
+    model: "cross-encoder/nli-deberta-v3-base"
+    device: cpu
+
+cache:
+  enabled: false   # disable cache in tests for predictable behavior
+  ttl_seconds: 3600
+
+performance:
+  thread_pool_workers: 2
+  evaluator_timeout_seconds: 5
+
+storage:
+  store_input_text: true
+  store_output_text: false
+
+websocket:
+  max_connections: 10
