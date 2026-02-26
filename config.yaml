@@ -1,0 +1,124 @@
+# ─── Application ─────────────────────────────────────────────────────────────
+app:
+  name: SentinelLM
+  version: "1.0"
+  config_version: "1"        # increment when evaluator config changes
+                              # (used to invalidate Redis cache keys)
+  log_level: INFO             # DEBUG | INFO | WARNING | ERROR
+  shadow_mode: false          # if true: log scores but never block requests
+                              # useful for threshold tuning before going live
+
+# ─── LLM Backend ─────────────────────────────────────────────────────────────
+# Choose one provider. Switch by changing `provider` — no code changes needed.
+# API keys for cloud providers are set via environment variables (never in config.yaml).
+
+llm_backend:
+  provider: ollama              # ollama | openai | anthropic
+
+  ollama:
+    base_url: http://ollama:11434   # internal Docker network URL
+    model: llama3.2                 # model name served by Ollama
+    timeout_seconds: 60
+
+  openai:
+    model: gpt-4o                   # any OpenAI chat model
+    timeout_seconds: 60
+    # API key: set OPENAI_API_KEY in .env
+
+  anthropic:
+    model: claude-sonnet-4-6        # any Anthropic model ID
+    timeout_seconds: 60
+    # API key: set ANTHROPIC_API_KEY in .env
+
+# ─── Evaluator Chain ─────────────────────────────────────────────────────────
+# Each evaluator has: enabled, threshold, and optionally evaluator-specific fields.
+# threshold: score above which a flag is raised (and request blocked for input evaluators)
+# Set enabled: false to skip an evaluator entirely (no latency cost).
+
+evaluators:
+
+  # Input evaluators (run BEFORE the LLM call)
+
+  pii:
+    enabled: true
+    threshold: 0.5              # Presidio returns binary per-entity; threshold = min
+                                # confidence score to consider a PII detection valid
+    action: redact              # redact | block
+                                # redact: remove PII and pass request through
+                                # block: reject the request with 400
+
+  prompt_injection:
+    enabled: true
+    threshold: 0.80             # injection probability above which request is blocked
+    model: "deepset/deberta-v3-base-injection"  # HuggingFace model ID
+    device: auto                # auto | cpu | mps
+                                # auto: use MPS if available, else CPU
+
+  topic_guardrail:
+    enabled: false              # disabled by default; requires allowed_topics to be set
+    threshold: 0.30             # minimum cosine similarity to allowed topics
+                                # requests BELOW threshold are blocked (off-topic)
+    allowed_topics:             # define the domain your app covers
+      - "software engineering"
+      - "programming"
+      - "computer science"
+    embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+
+  # Output evaluators (run AFTER the LLM response arrives)
+
+  toxicity:
+    enabled: true
+    threshold: 0.70             # Detoxify score above which output is flagged
+    dimensions:                 # which Detoxify dimensions to check
+      - toxicity
+      - severe_toxicity
+      - threat
+      - insult
+      - identity_attack
+      # - obscenity           # uncomment to enable
+    flag_on: any                # any | all
+                                # any: flag if ANY dimension exceeds threshold
+                                # all: flag only if ALL dimensions exceed threshold
+
+  relevance:
+    enabled: true
+    threshold: 0.30             # cosine similarity BELOW which output is flagged
+                                # (low relevance = off-topic response)
+    embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+
+  hallucination:
+    enabled: true
+    threshold: 0.70             # contradiction score above which output is flagged
+    model: "cross-encoder/nli-deberta-v3-base"
+    device: auto
+    # Only runs when context_documents are present in the request.
+    # Silently skipped (score = null) if no context provided.
+
+  faithfulness:
+    enabled: true
+    threshold: 0.70             # same NLI model as hallucination; different scoring logic
+    model: "cross-encoder/nli-deberta-v3-base"
+    device: auto
+    # Only runs when context_documents are present in the request.
+
+# ─── Caching ─────────────────────────────────────────────────────────────────
+cache:
+  enabled: true
+  ttl_seconds: 3600             # 1 hour TTL for cached input evaluator scores
+  # Redis connection is configured via REDIS_URL environment variable
+
+# ─── Evaluator Performance ───────────────────────────────────────────────────
+performance:
+  thread_pool_workers: 4        # threads for CPU-bound model inference
+                                # recommended: number of performance cores on your Mac
+  evaluator_timeout_seconds: 3  # per-evaluator timeout; exceed = fail-open
+
+# ─── Storage ─────────────────────────────────────────────────────────────────
+storage:
+  store_input_text: true        # if false: never store raw input_text (only hash)
+                                # auto-set to false for requests where PII is detected
+  store_output_text: false      # storing output can be expensive at volume; off by default
+
+# ─── Dashboard / WebSocket ───────────────────────────────────────────────────
+websocket:
+  max_connections: 10           # max simultaneous dashboard WebSocket clients

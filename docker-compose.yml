@@ -1,0 +1,82 @@
+version: "3.9"
+
+services:
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app                        # mount source for hot reload in dev
+      - model-cache:/root/.cache      # persist HuggingFace + sentence-transformers caches
+    environment:
+      - DATABASE_URL=postgresql://sentinel:sentinel@postgres:5432/sentinellm
+      - REDIS_URL=redis://redis:6379/0
+      - SENTINEL_CONFIG_PATH=/app/config.yaml
+      - SENTINEL_ENV=development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn sentinel.main:app --host 0.0.0.0 --port 8000 --reload
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: ../docker/Dockerfile.dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000
+    depends_on:
+      - api
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+      POSTGRES_DB: sentinellm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./sentinel/storage/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Ollama (optional — only needed when llm_backend.provider: ollama) ──────
+  # Start with: docker compose --profile ollama up
+  # Pull model:  docker compose exec ollama ollama pull llama3.2
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    profiles: [ollama]
+
+volumes:
+  postgres-data:
+  redis-data:
+  ollama-models:
+  model-cache:           # shared cache for HuggingFace + sentence-transformers models
