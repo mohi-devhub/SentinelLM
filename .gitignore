@@ -1,0 +1,39 @@
+# ── Secrets & local config ────────────────────────────────────────────────────
+.env
+CLAUDE.md
+
+# ── Docs (internal only) ──────────────────────────────────────────────────────
+docs/
+
+# ── Python ────────────────────────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Python tooling ────────────────────────────────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── ML model caches ───────────────────────────────────────────────────────────
+# Mount these as Docker volumes instead (see docker-compose.yml)
+.cache/
+*.onnx
+
+# ── Node.js / Next.js ─────────────────────────────────────────────────────────
+dashboard/node_modules/
+dashboard/.next/
+dashboard/.env.local
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+docker/secrets/
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
