@@ -3,6 +3,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from sentinel.evaluators.input.pii import PIIEvaluator
+from sentinel.evaluators.input.prompt_injection import PromptInjectionEvaluator
+from sentinel.evaluators.input.topic_guardrail import TopicGuardrailEvaluator
+from sentinel.evaluators.output.faithfulness import FaithfulnessEvaluator
+from sentinel.evaluators.output.hallucination import HallucinationEvaluator
+from sentinel.evaluators.output.relevance import RelevanceEvaluator
 from sentinel.evaluators.output.toxicity import ToxicityEvaluator
 
 if TYPE_CHECKING:
@@ -11,17 +17,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Maps config.yaml evaluator keys to their implementation classes.
-# Phase 1: toxicity only. Remaining evaluators added in later phases.
+# Order determines the order evaluators are instantiated and run within each layer.
 EVALUATOR_REGISTRY: dict[str, type[BaseEvaluator]] = {
+    # Input evaluators (run before the LLM call, concurrent with short-circuit on block)
+    "pii": PIIEvaluator,
+    "prompt_injection": PromptInjectionEvaluator,
+    "topic_guardrail": TopicGuardrailEvaluator,
+    # Output evaluators (run after the LLM response, all always run)
     "toxicity": ToxicityEvaluator,
-    # Phase 2 additions:
-    # "pii":              PIIEvaluator,
-    # "prompt_injection": PromptInjectionEvaluator,
-    # "topic_guardrail":  TopicGuardrailEvaluator,
-    # Phase 3 additions:
-    # "relevance":        RelevanceEvaluator,
-    # "hallucination":    HallucinationEvaluator,
-    # "faithfulness":     FaithfulnessEvaluator,
+    "relevance": RelevanceEvaluator,
+    "hallucination": HallucinationEvaluator,
+    "faithfulness": FaithfulnessEvaluator,
 }
 
 
