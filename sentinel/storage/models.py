@@ -66,3 +66,39 @@ class RequestRecord:
     review_label: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     reviewer_note: Optional[str] = None
+
+
+@dataclass
+class EvalRunRecord:
+    """Python representation of a row in the `eval_runs` table."""
+
+    id: Optional[UUID] = None
+    created_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    label: str = ""
+    dataset_path: str = ""
+    baseline_run_id: Optional[UUID] = None
+
+    record_count: int = 0
+    status: str = "running"  # running | complete | failed
+
+    # Computed on completion; stored as JSON blobs in the DB
+    summary_json: Optional[dict] = None
+    regression_json: Optional[dict] = None
+
+
+@dataclass
+class EvalResultRecord:
+    """Python representation of a row in the `eval_results` table."""
+
+    id: Optional[UUID] = None
+    eval_run_id: Optional[UUID] = None
+    request_id: Optional[UUID] = None
+
+    record_index: int = 0
+    input_text: str = ""
+    expected_output: Optional[str] = None
+    actual_output: Optional[str] = None
+
+    passed: bool = True

@@ -4,6 +4,9 @@ version = "1.0.0"
 description = "LLM Guardrails & Evaluation Middleware"
 requires-python = ">=3.11"
 
+[project.scripts]
+sentinel = "sentinel.eval_pipeline.cli:app"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
