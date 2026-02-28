@@ -8,6 +8,7 @@ from typing import AsyncIterator
 import redis.asyncio as aioredis
 import yaml
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -79,12 +80,33 @@ def create_app(config_path: str | None = None) -> FastAPI:
         lifespan=lifespan,
     )
 
+    # ── CORS — allow Next.js dashboard on any localhost port ─────────────────
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     # ── Routers ──────────────────────────────────────────────────────────────
-    from sentinel.api import health, proxy, websocket  # noqa: PLC0415
+    from sentinel.api import (  # noqa: PLC0415
+        eval,
+        health,
+        metrics,
+        proxy,
+        review,
+        scores,
+        websocket,
+    )
 
     app.include_router(proxy.router)
     app.include_router(health.router)
     app.include_router(websocket.router)
+    app.include_router(scores.router)
+    app.include_router(metrics.router)
+    app.include_router(review.router)
+    app.include_router(eval.router)
 
     return app
 

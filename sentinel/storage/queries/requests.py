@@ -1,10 +1,79 @@
 from __future__ import annotations
 
 import uuid as _uuid
+from datetime import datetime
+from typing import Any, Optional
+from uuid import UUID
 
 import asyncpg
 
 from sentinel.storage.models import RequestRecord
+
+_FLAG_COLS = (
+    "flag_pii OR flag_prompt_injection OR flag_topic_guardrail "
+    "OR flag_toxicity OR flag_relevance OR flag_hallucination OR flag_faithfulness"
+)
+
+_SCORE_COLS = """
+    id, created_at, model, blocked, block_reason,
+    score_pii, score_prompt_injection, score_topic_guardrail,
+    score_toxicity, score_relevance, score_hallucination, score_faithfulness,
+    flag_pii, flag_prompt_injection, flag_topic_guardrail,
+    flag_toxicity, flag_relevance, flag_hallucination, flag_faithfulness,
+    latency_pii, latency_prompt_injection, latency_topic_guardrail,
+    latency_toxicity, latency_relevance, latency_hallucination, latency_faithfulness,
+    latency_llm, latency_total,
+    input_text, input_redacted, has_context,
+    reviewed, review_label, reviewer_note, reviewed_at
+"""
+
+# Valid evaluator flag column names (whitelist for dynamic filter)
+_VALID_EVALUATORS = frozenset({
+    "pii", "prompt_injection", "topic_guardrail",
+    "toxicity", "relevance", "hallucination", "faithfulness",
+})
+
+
+def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
+    flags = [
+        ev for ev in _VALID_EVALUATORS
+        if row[f"flag_{ev}"]
+    ]
+    return {
+        "id": str(row["id"]),
+        "created_at": row["created_at"].isoformat(),
+        "model": row["model"],
+        "blocked": row["blocked"],
+        "block_reason": row["block_reason"],
+        "flags": flags,
+        "scores": {
+            "pii": row["score_pii"],
+            "prompt_injection": row["score_prompt_injection"],
+            "topic_guardrail": row["score_topic_guardrail"],
+            "toxicity": row["score_toxicity"],
+            "relevance": row["score_relevance"],
+            "hallucination": row["score_hallucination"],
+            "faithfulness": row["score_faithfulness"],
+        },
+        "latency_ms": {
+            "pii": row["latency_pii"],
+            "prompt_injection": row["latency_prompt_injection"],
+            "topic_guardrail": row["latency_topic_guardrail"],
+            "toxicity": row["latency_toxicity"],
+            "relevance": row["latency_relevance"],
+            "hallucination": row["latency_hallucination"],
+            "faithfulness": row["latency_faithfulness"],
+            "llm": row["latency_llm"],
+            "total": row["latency_total"],
+        },
+        "latency_total": row["latency_total"],
+        "input_text": row["input_text"],
+        "input_redacted": row["input_redacted"],
+        "has_context": row["has_context"],
+        "reviewed": row["reviewed"],
+        "review_label": row["review_label"],
+        "reviewer_note": row["reviewer_note"],
+    }
 
 # id is included so the proxy can pre-generate a UUID and include it in the
 # HTTP response before the background INSERT completes.
@@ -98,3 +167,102 @@ async def insert_request(pool: asyncpg.Pool, record: RequestRecord) -> RequestRe
     record.id = row["id"]
     record.created_at = row["created_at"]
     return record
+
+
+async def get_scores(
+    pool: asyncpg.Pool,
+    page: int = 1,
+    limit: int = 50,
+    flagged_only: bool = False,
+    evaluator: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+) -> tuple[list[dict[str, Any]], int]:
+    """Return paginated request records with optional filters.
+
+    Returns (items, total_count).
+    """
+    conditions = ["TRUE"]
+    params: list[Any] = []
+    p = 1
+
+    if start_date:
+        conditions.append(f"created_at >= ${p}")
+        params.append(start_date)
+        p += 1
+
+    if end_date:
+        conditions.append(f"created_at <= ${p}")
+        params.append(end_date)
+        p += 1
+
+    if flagged_only:
+        conditions.append(f"({_FLAG_COLS})")
+
+    if evaluator and evaluator in _VALID_EVALUATORS:
+        conditions.append(f"flag_{evaluator} = TRUE")
+
+    where = " AND ".join(conditions)
+    offset = (page - 1) * limit
+
+    count_q = f"SELECT COUNT(*) FROM requests WHERE {where}"
+    data_q = f"""
+        SELECT {_SCORE_COLS}
+        FROM requests
+        WHERE {where}
+        ORDER BY created_at DESC
+        LIMIT ${p} OFFSET ${p + 1}
+    """
+    params_with_page = params + [limit, offset]
+
+    async with pool.acquire() as conn:
+        total = await conn.fetchval(count_q, *params)
+        rows = await conn.fetch(data_q, *params_with_page)
+
+    return [_row_to_dict(r) for r in rows], total
+
+
+async def get_request_by_id(
+    pool: asyncpg.Pool, request_id: UUID
+) -> Optional[dict[str, Any]]:
+    """Return full detail for a single request, or None if not found."""
+    query = f"SELECT {_SCORE_COLS} FROM requests WHERE id = $1"
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(query, request_id)
+    return _row_to_dict(row) if row else None
+
+
+async def get_review_queue(
+    pool: asyncpg.Pool, limit: int = 20
+) -> list[dict[str, Any]]:
+    """Return unreviewed flagged requests, oldest first (review queue order)."""
+    query = f"""
+        SELECT {_SCORE_COLS}
+        FROM requests
+        WHERE NOT reviewed AND ({_FLAG_COLS})
+        ORDER BY created_at ASC
+        LIMIT $1
+    """
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(query, limit)
+    return [_row_to_dict(r) for r in rows]
+
+
+async def submit_review(
+    pool: asyncpg.Pool,
+    request_id: UUID,
+    label: str,
+    note: Optional[str],
+) -> bool:
+    """Mark a request as reviewed. Returns True if a row was updated."""
+    query = """
+        UPDATE requests
+        SET reviewed = TRUE,
+            review_label = $2,
+            reviewer_note = $3,
+            reviewed_at = NOW()
+        WHERE id = $1
+    """
+    async with pool.acquire() as conn:
+        result = await conn.execute(query, request_id, label, note)
+    return result == "UPDATE 1"
