@@ -23,21 +23,16 @@ rich==13.8.1                    # pretty CLI output for eval scorecards
 
 # ── ML / Evaluators ───────────────────────────────────────────────────────────
 
-# PyTorch — Apple Silicon MPS build
-# IMPORTANT: Do NOT install the CUDA build on Mac.
-# The MPS build is the default for macOS on pip.
+# PyTorch — platform notes:
+#   macOS (Apple Silicon): pip installs the MPS build by default (~400 MB).
+#   Linux / Docker:        Dockerfile installs the CPU-only build (~900 MB)
+#                          to avoid the default CUDA build (~2.5 GB).
 torch==2.4.1
-torchvision==0.19.1             # required by some HuggingFace models
 
 # HuggingFace
 transformers==4.44.2
 tokenizers==0.19.1
 huggingface-hub==0.24.6
-accelerate==0.34.2              # needed for device_map and MPS support
-
-# ONNX Runtime (for optimized CPU inference)
-onnxruntime==1.19.2
-optimum==1.22.0                 # HuggingFace → ONNX export
 
 # Sentence Transformers (relevance + topic guardrail)
 sentence-transformers==3.1.1
@@ -49,7 +44,11 @@ detoxify==0.5.2
 presidio-analyzer==2.2.355
 presidio-anonymizer==2.2.355
 spacy==3.7.6
-# After pip install, run: python -m spacy download en_core_web_lg
+# Model download — choose based on accuracy vs size trade-off:
+#   en_core_web_sm  (~12 MB)  — fast, lower PII recall
+#   en_core_web_md  (~43 MB)  — balanced
+#   en_core_web_lg  (~700 MB) — most accurate (default)
+# Run: python -m spacy download en_core_web_lg
 
 # Prompt Injection (no extra install — uses transformers pipeline)
 # Model: deepset/deberta-v3-base-injection (downloaded at first run)

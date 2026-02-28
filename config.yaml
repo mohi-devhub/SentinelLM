@@ -13,7 +13,7 @@ app:
 # API keys for cloud providers are set via environment variables (never in config.yaml).
 
 llm_backend:
-  provider: ollama              # ollama | openai | anthropic
+  provider: gemini              # ollama | openai | anthropic | gemini
 
   ollama:
     base_url: http://ollama:11434   # internal Docker network URL
@@ -31,7 +31,7 @@ llm_backend:
     # API key: set ANTHROPIC_API_KEY in .env
 
   gemini:
-    model: gemini-1.5-flash         # gemini-1.5-flash | gemini-1.5-pro | gemini-2.0-flash-exp
+    model: gemini-2.5-flash-lite    # gemini-2.0-flash | gemini-2.0-flash-lite | gemini-2.5-flash-lite
     timeout_seconds: 60
     # API key: set GEMINI_API_KEY in .env
 
@@ -51,6 +51,8 @@ evaluators:
     action: redact              # redact | block
                                 # redact: remove PII and pass request through
                                 # block: reject the request with 400
+                                # spacy_model: en_core_web_sm | en_core_web_md | en_core_web_lg
+                                # Docker default: en_core_web_sm (12 MB vs 700 MB for lg)
 
   prompt_injection:
     enabled: true

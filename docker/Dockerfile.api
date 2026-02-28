@@ -12,12 +12,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies first (layer cache: only re-runs if requirements change)
+# Install CPU-only PyTorch before the rest of requirements.txt.
+# The default pip index serves the CUDA build on Linux (~2.5 GB); the CPU build
+# is ~900 MB.  pip treats torch==2.4.1+cpu as satisfying the torch==2.4.1
+# constraint in requirements.txt so it will not be reinstalled.
+RUN pip install --no-cache-dir \
+    torch==2.4.1 \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# Install remaining Python dependencies (torch is already satisfied above)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Download spaCy model required by Presidio — must run after pip install
-RUN python -m spacy download en_core_web_lg
+# Download spaCy NER model for PII detection.
+# en_core_web_sm (~12 MB) is sufficient for production; swap to en_core_web_lg
+# (~700 MB) if you need higher PII recall on dense free-text.
+RUN python -m spacy download en_core_web_sm
 
 # Copy application source and fix ownership
 COPY --chown=sentinel:sentinel . .
