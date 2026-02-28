@@ -8,21 +8,18 @@ from __future__ import annotations
 
 import json
 import uuid
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from sentinel.eval_pipeline.runner import (
+    _BLOCK_CODE_TO_EVALUATOR,
     EVALUATOR_NAMES,
     DatasetRecord,
     RunResult,
-    _BLOCK_CODE_TO_EVALUATOR,
     _run_one,
     load_dataset,
-    run_eval,
 )
-
 
 # ── DatasetRecord ──────────────────────────────────────────────────────────────
 
@@ -210,9 +207,7 @@ async def test_run_one_pii_block():
     record = _make_record()
     mock_resp = MagicMock()
     mock_resp.status_code = 400
-    mock_resp.json.return_value = {
-        "error": {"code": "pii_detected", "score": 0.88}
-    }
+    mock_resp.json.return_value = {"error": {"code": "pii_detected", "score": 0.88}}
 
     mock_client = AsyncMock()
     mock_client.post = AsyncMock(return_value=mock_resp)
@@ -267,9 +262,7 @@ async def test_run_one_context_documents_included():
     """context_documents are forwarded in the request body."""
     import asyncio
 
-    record = DatasetRecord(
-        record_index=0, input="summarise", context_documents=["doc1", "doc2"]
-    )
+    record = DatasetRecord(record_index=0, input="summarise", context_documents=["doc1", "doc2"])
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = {
@@ -292,8 +285,15 @@ async def test_run_one_context_documents_included():
 
 
 def test_evaluator_names_contains_all_seven():
-    expected = {"pii", "prompt_injection", "topic_guardrail", "toxicity", "relevance",
-                "hallucination", "faithfulness"}
+    expected = {
+        "pii",
+        "prompt_injection",
+        "topic_guardrail",
+        "toxicity",
+        "relevance",
+        "hallucination",
+        "faithfulness",
+    }
     assert set(EVALUATOR_NAMES) == expected
 
 

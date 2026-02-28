@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 def test_evaluator_registry_has_all_seven_evaluators():
     from sentinel.evaluators.registry import EVALUATOR_REGISTRY

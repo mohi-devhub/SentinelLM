@@ -24,10 +24,11 @@ RUN pip install --no-cache-dir \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Download spaCy NER model for PII detection.
-# en_core_web_sm (~12 MB) is sufficient for production; swap to en_core_web_lg
-# (~700 MB) if you need higher PII recall on dense free-text.
-RUN python -m spacy download en_core_web_sm
+# Download spaCy NER model for PII detection (pinned to match spaCy 3.7.x).
+# Using direct whl URL avoids `spacy download` relying on PyPI API lookups,
+# which can fail in restricted Docker build environments.
+RUN pip install --no-cache-dir \
+    "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl"
 
 # Copy application source and fix ownership
 COPY --chown=sentinel:sentinel . .

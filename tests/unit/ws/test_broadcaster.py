@@ -8,7 +8,6 @@ import pytest
 
 from sentinel.ws.broadcaster import ConnectionManager, manager
 
-
 # ── ConnectionManager ─────────────────────────────────────────────────────────
 
 

@@ -14,7 +14,6 @@ import pytest
 from sentinel.proxy.factory import get_llm_client
 from sentinel.proxy.ollama import OllamaClient
 
-
 # ── OllamaClient ──────────────────────────────────────────────────────────────
 
 
@@ -150,6 +149,7 @@ def test_factory_returns_ollama_client():
     }
     client = get_llm_client(config)
     from sentinel.proxy.ollama import OllamaClient
+
     assert isinstance(client, OllamaClient)
 
 
@@ -162,6 +162,7 @@ def test_factory_returns_openai_client():
     }
     client = get_llm_client(config, openai_api_key="test-key")
     from sentinel.proxy.openai import OpenAIClient
+
     assert isinstance(client, OpenAIClient)
 
 
@@ -174,6 +175,7 @@ def test_factory_returns_gemini_client():
     }
     client = get_llm_client(config, gemini_api_key="test-key")
     from sentinel.proxy.gemini import GeminiClient
+
     assert isinstance(client, GeminiClient)
 
 
@@ -187,6 +189,7 @@ def test_factory_default_provider_is_ollama():
     """Empty config defaults to ollama."""
     client = get_llm_client({})
     from sentinel.proxy.ollama import OllamaClient
+
     assert isinstance(client, OllamaClient)
 
 

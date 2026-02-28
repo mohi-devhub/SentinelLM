@@ -18,7 +18,6 @@ from sentinel.storage.queries.metrics import (
     get_summary_metrics,
 )
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 

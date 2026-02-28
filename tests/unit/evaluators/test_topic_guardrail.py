@@ -66,6 +66,7 @@ def evaluator_on_topic():
         if "sentinel.evaluators.input.topic_guardrail" in sys.modules:
             del sys.modules["sentinel.evaluators.input.topic_guardrail"]
         from sentinel.evaluators.input.topic_guardrail import TopicGuardrailEvaluator  # noqa
+
         ev = TopicGuardrailEvaluator(config=MOCK_CONFIG_WITH_TOPICS)
         ev._model = mock_model
         ev._util = mock_util
@@ -87,6 +88,7 @@ def evaluator_off_topic():
         if "sentinel.evaluators.input.topic_guardrail" in sys.modules:
             del sys.modules["sentinel.evaluators.input.topic_guardrail"]
         from sentinel.evaluators.input.topic_guardrail import TopicGuardrailEvaluator  # noqa
+
         ev = TopicGuardrailEvaluator(config=MOCK_CONFIG_WITH_TOPICS)
         ev._model = mock_model
         yield ev, mock_util
@@ -121,6 +123,7 @@ async def test_no_topics_configured_passes_everything():
         if "sentinel.evaluators.input.topic_guardrail" in sys.modules:
             del sys.modules["sentinel.evaluators.input.topic_guardrail"]
         from sentinel.evaluators.input.topic_guardrail import TopicGuardrailEvaluator  # noqa
+
         ev = TopicGuardrailEvaluator(config=MOCK_CONFIG_NO_TOPICS)
         ev._topic_embeddings = None
     finally:
@@ -233,16 +236,16 @@ async def test_inner_score_function_executes_directly(evaluator_on_topic):
     mock_sims.__getitem__ = MagicMock(return_value=mock_tensor)
 
     # Patch util at the module level so _score picks it up
-    with patch("sentinel.evaluators.input.topic_guardrail.run_in_executor",
-               new_callable=lambda: lambda: None) as _:
+    with patch(
+        "sentinel.evaluators.input.topic_guardrail.run_in_executor",
+        new_callable=lambda: lambda: None,
+    ) as _:
         # Actually let's directly test by not patching run_in_executor
         pass
 
     # Without patching run_in_executor, the inner _score function will run.
     # We need _model.encode and util.cos_sim to work.
     import sentinel.evaluators.input.topic_guardrail as tg_module
-
-    original_util = sys.modules.get("sentence_transformers")
 
     # Set up the mock to use for the inner function
     ev._model.encode.return_value = MagicMock()

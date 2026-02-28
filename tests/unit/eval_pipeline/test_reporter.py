@@ -7,8 +7,8 @@ file write which uses a tmp_path).  Coverage target: 95%+ of reporter.py.
 from __future__ import annotations
 
 import json
+from datetime import UTC
 from io import StringIO
-from pathlib import Path
 
 import pytest
 from rich.console import Console
@@ -23,7 +23,6 @@ from sentinel.eval_pipeline.reporter import (
     print_runs_table,
 )
 from sentinel.eval_pipeline.runner import EVALUATOR_NAMES, DatasetRecord, RunResult
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -303,7 +302,9 @@ def test_export_json_writes_valid_json(tmp_path):
 
 
 def test_export_json_includes_regression(tmp_path):
-    summary = {ev: {"flag_rate": 0.1, "mean": 0.1, "p50": 0.1, "p95": 0.1} for ev in EVALUATOR_NAMES}
+    summary = {
+        ev: {"flag_rate": 0.1, "mean": 0.1, "p50": 0.1, "p95": 0.1} for ev in EVALUATOR_NAMES
+    }
     regression = compute_regression(summary, {ev: {"flag_rate": 0.0} for ev in EVALUATOR_NAMES})
     out = tmp_path / "report.json"
     export_json(
@@ -334,7 +335,7 @@ def test_print_runs_table_empty():
 
 def test_print_runs_table_renders_runs():
     """Non-empty list renders a table row for each run."""
-    from datetime import datetime, timezone
+    from datetime import datetime
     from unittest.mock import MagicMock
 
     run = MagicMock()
@@ -342,8 +343,8 @@ def test_print_runs_table_renders_runs():
     run.status = "complete"
     run.record_count = 50
     run.dataset_path = "evals/test.jsonl"
-    run.created_at = datetime(2026, 2, 28, 12, 0, 0, tzinfo=timezone.utc)
-    run.completed_at = datetime(2026, 2, 28, 12, 1, 0, tzinfo=timezone.utc)
+    run.created_at = datetime(2026, 2, 28, 12, 0, 0, tzinfo=UTC)
+    run.completed_at = datetime(2026, 2, 28, 12, 1, 0, tzinfo=UTC)
 
     buf = StringIO()
     console = Console(file=buf, highlight=False)

@@ -24,7 +24,6 @@ from sentinel.storage.queries.eval_runs import (
     list_eval_runs,
 )
 
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -113,9 +112,7 @@ async def test_insert_eval_run_returns_record():
     run_id = uuid.uuid4()
     now = datetime(2026, 2, 28, tzinfo=UTC)
     row = MagicMock()
-    row.__getitem__ = lambda self, key: {
-        "id": run_id, "created_at": now
-    }[key]
+    row.__getitem__ = lambda self, key: {"id": run_id, "created_at": now}[key]
     conn.fetchrow = AsyncMock(return_value=row)
 
     record = await insert_eval_run(pool, label="run1", dataset_path="data.jsonl")
