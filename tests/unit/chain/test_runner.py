@@ -4,8 +4,9 @@ Evaluators are replaced with AsyncMock objects — no real models are loaded.
 """
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from sentinel.chain.runner import run_input_chain, run_output_chain
 from sentinel.evaluators.base import EvalPayload, EvalResult

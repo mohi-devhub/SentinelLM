@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
 
 from sentinel.evaluators.base import BaseEvaluator, EvalPayload, EvalResult
 
@@ -19,7 +18,7 @@ async def _run_with_timeout(
     """Evaluate with a per-evaluator timeout. Returns fail-open result on timeout."""
     try:
         return await asyncio.wait_for(ev.evaluate(payload), timeout=timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("evaluator %s timed out after %.1fs", ev.name, timeout)
         return EvalResult(
             evaluator_name=ev.name,
@@ -34,7 +33,7 @@ async def run_input_chain(
     payload: EvalPayload,
     evaluators: list[BaseEvaluator],
     timeout: float = _DEFAULT_TIMEOUT,
-) -> tuple[list[EvalResult], Optional[EvalResult]]:
+) -> tuple[list[EvalResult], EvalResult | None]:
     """Run all input evaluators concurrently, short-circuiting on the first block.
 
     Uses asyncio.wait(FIRST_COMPLETED) so we can cancel remaining tasks the
@@ -55,7 +54,7 @@ async def run_input_chain(
 
     pending: set[asyncio.Task] = set(task_to_ev.keys())
     results: list[EvalResult] = []
-    blocked_by: Optional[EvalResult] = None
+    blocked_by: EvalResult | None = None
 
     while pending:
         done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)

@@ -20,8 +20,6 @@ Device note:
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from sentinel.evaluators.base import BaseEvaluator, EvalPayload, run_in_executor
 
 
@@ -65,7 +63,7 @@ class HallucinationEvaluator(BaseEvaluator):
         self._model = CrossEncoder(model_id, device=device)
         self._contradiction_idx: int = _get_label_index(self._model, "contradiction", fallback=0)
 
-    async def _run_inference(self, payload: EvalPayload) -> tuple[float, Optional[dict]]:
+    async def _run_inference(self, payload: EvalPayload) -> tuple[float, dict | None]:
         output = payload.output_text  # guaranteed non-None by BaseEvaluator.evaluate()
         docs = payload.context_documents  # guaranteed non-None by BaseEvaluator.evaluate()
 

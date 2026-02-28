@@ -16,8 +16,6 @@ so per-request cost is just one forward pass for the user's input.
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from sentinel.evaluators.base import BaseEvaluator, EvalPayload, run_in_executor
 
 
@@ -52,7 +50,7 @@ class TopicGuardrailEvaluator(BaseEvaluator):
         else:
             self._topic_embeddings = None
 
-    async def _run_inference(self, payload: EvalPayload) -> tuple[float, Optional[dict]]:
+    async def _run_inference(self, payload: EvalPayload) -> tuple[float, dict | None]:
         if self._topic_embeddings is None:
             # No topics configured — pass everything through (score = 1.0)
             return 1.0, {"warning": "no allowed_topics configured; all requests pass"}

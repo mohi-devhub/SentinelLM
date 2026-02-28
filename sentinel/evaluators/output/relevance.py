@@ -12,8 +12,6 @@ flag_direction = 'below': flag when score < threshold (irrelevant response).
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from sentinel.evaluators.base import BaseEvaluator, EvalPayload, run_in_executor
 
 
@@ -41,7 +39,7 @@ class RelevanceEvaluator(BaseEvaluator):
         )
         self._model = SentenceTransformer(model_id)
 
-    async def _run_inference(self, payload: EvalPayload) -> tuple[float, Optional[dict]]:
+    async def _run_inference(self, payload: EvalPayload) -> tuple[float, dict | None]:
         input_text = payload.input_text
         output_text = payload.output_text  # guaranteed non-None by BaseEvaluator.evaluate()
 

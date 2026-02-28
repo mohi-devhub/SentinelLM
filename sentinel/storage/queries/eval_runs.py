@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import json
 import uuid as _uuid
-from typing import Optional
 from uuid import UUID
 
 import asyncpg
 
-from sentinel.storage.models import EvalResultRecord, EvalRunRecord
+from sentinel.storage.models import EvalRunRecord
 
 # ── eval_runs ────────────────────────────────────────────────────────────────
 
@@ -91,7 +90,7 @@ async def insert_eval_run(
     pool: asyncpg.Pool,
     label: str,
     dataset_path: str,
-    baseline_run_id: Optional[UUID] = None,
+    baseline_run_id: UUID | None = None,
 ) -> EvalRunRecord:
     """Create a new eval_run row in 'running' state and return it."""
     run_id = _uuid.uuid4()
@@ -114,7 +113,7 @@ async def complete_eval_run(
     run_id: UUID,
     record_count: int,
     summary: dict,
-    regression: Optional[dict],
+    regression: dict | None,
 ) -> None:
     """Mark an eval run as complete and persist the scorecard blobs."""
     async with pool.acquire() as conn:
@@ -136,11 +135,11 @@ async def fail_eval_run(pool: asyncpg.Pool, run_id: UUID) -> None:
 async def insert_eval_result(
     pool: asyncpg.Pool,
     eval_run_id: UUID,
-    request_id: Optional[UUID],
+    request_id: UUID | None,
     record_index: int,
     input_text: str,
-    expected_output: Optional[str],
-    actual_output: Optional[str],
+    expected_output: str | None,
+    actual_output: str | None,
     passed: bool,
 ) -> None:
     """Persist a single eval result row."""
@@ -168,7 +167,7 @@ async def list_eval_runs(pool: asyncpg.Pool) -> list[EvalRunRecord]:
 
 async def get_eval_run_by_label(
     pool: asyncpg.Pool, label: str
-) -> Optional[EvalRunRecord]:
+) -> EvalRunRecord | None:
     """Look up an eval run by its human-readable label."""
     async with pool.acquire() as conn:
         row = await conn.fetchrow(_GET_EVAL_RUN_BY_LABEL, label)
@@ -177,7 +176,7 @@ async def get_eval_run_by_label(
 
 async def get_eval_run_by_id(
     pool: asyncpg.Pool, run_id: UUID
-) -> Optional[EvalRunRecord]:
+) -> EvalRunRecord | None:
     """Look up an eval run by UUID."""
     async with pool.acquire() as conn:
         row = await conn.fetchrow(_GET_EVAL_RUN_BY_ID, run_id)

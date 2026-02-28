@@ -56,22 +56,22 @@ async def get_aggregate_metrics(
             )                                                               AS flag_rate_pii,
             COALESCE(
                 COUNT(*) FILTER (WHERE flag_prompt_injection)::float / NULLIF(COUNT(*), 0), 0
-            )                                                               AS flag_rate_prompt_injection,
+            ) AS flag_rate_prompt_injection,
             COALESCE(
                 COUNT(*) FILTER (WHERE flag_topic_guardrail)::float / NULLIF(COUNT(*), 0), 0
-            )                                                               AS flag_rate_topic_guardrail,
+            ) AS flag_rate_topic_guardrail,
             COALESCE(
                 COUNT(*) FILTER (WHERE flag_toxicity)::float / NULLIF(COUNT(*), 0), 0
-            )                                                               AS flag_rate_toxicity,
+            ) AS flag_rate_toxicity,
             COALESCE(
                 COUNT(*) FILTER (WHERE flag_relevance)::float / NULLIF(COUNT(*), 0), 0
-            )                                                               AS flag_rate_relevance,
+            ) AS flag_rate_relevance,
             COALESCE(
                 COUNT(*) FILTER (WHERE flag_hallucination)::float / NULLIF(COUNT(*), 0), 0
-            )                                                               AS flag_rate_hallucination,
+            ) AS flag_rate_hallucination,
             COALESCE(
                 COUNT(*) FILTER (WHERE flag_faithfulness)::float / NULLIF(COUNT(*), 0), 0
-            )                                                               AS flag_rate_faithfulness,
+            ) AS flag_rate_faithfulness,
             COALESCE(
                 PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_total),
                 0
@@ -123,7 +123,7 @@ async def get_summary_metrics(pool: asyncpg.Pool) -> dict[str, Any]:
         WHERE created_at >= NOW() - INTERVAL '24 hours'
     """
 
-    top_flag_query = f"""
+    top_flag_query = """
         SELECT unnested_flag, COUNT(*) AS cnt
         FROM (
             SELECT unnest(ARRAY[

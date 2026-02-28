@@ -54,5 +54,11 @@ spacy==3.7.6
 # Prompt Injection (no extra install — uses transformers pipeline)
 # Model: deepset/deberta-v3-base-injection (downloaded at first run)
 
-# ── Google Gemini ──────────────────────────────────────────────────────────────
-google-generativeai==0.8.3
+# ── Cloud LLM SDKs ────────────────────────────────────────────────────────────
+openai>=1.50.0               # OpenAI / OpenAI-compatible provider
+anthropic>=0.37.0            # Anthropic Claude provider
+google-genai>=1.0.0          # Google Gemini provider (replaces deprecated google-generativeai)
+
+# ── Observability ──────────────────────────────────────────────────────────────
+prometheus-client>=0.21.0    # /metrics Prometheus endpoint
+python-json-logger>=2.0.7    # structured JSON logging for production

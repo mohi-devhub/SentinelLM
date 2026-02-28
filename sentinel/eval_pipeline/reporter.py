@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
 
 from rich import box
 from rich.console import Console
@@ -107,8 +106,8 @@ def print_report(
     n_records: int,
     duration_s: float,
     summary: dict,
-    regression: Optional[dict] = None,
-    baseline_label: Optional[str] = None,
+    regression: dict | None = None,
+    baseline_label: str | None = None,
 ) -> None:
     """Render the scorecard + optional regression table to the terminal."""
 
@@ -217,7 +216,7 @@ def export_json(
     n_records: int,
     duration_s: float,
     summary: dict,
-    regression: Optional[dict],
+    regression: dict | None,
 ) -> None:
     """Write the scorecard as a JSON file for CI/CD consumption."""
     report = {

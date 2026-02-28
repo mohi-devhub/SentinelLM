@@ -11,7 +11,6 @@ import pytest
 
 from sentinel.evaluators.base import EvalPayload
 
-
 # ── Config fixtures ───────────────────────────────────────────────────────────
 
 MOCK_CONFIG = {
@@ -39,7 +38,9 @@ def _make_evaluator(config: dict, pipeline_return_value: list) -> object:
     try:
         if "sentinel.evaluators.input.prompt_injection" in sys.modules:
             del sys.modules["sentinel.evaluators.input.prompt_injection"]
-        from sentinel.evaluators.input.prompt_injection import PromptInjectionEvaluator  # noqa: PLC0415
+        from sentinel.evaluators.input.prompt_injection import (
+            PromptInjectionEvaluator,  # noqa: PLC0415
+        )
 
         ev = PromptInjectionEvaluator(config=config)
         ev._model = mock_pipeline_instance

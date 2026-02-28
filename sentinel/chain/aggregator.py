@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 from uuid import UUID
 
 from sentinel.evaluators.base import EvalResult
@@ -28,26 +27,26 @@ class SentinelResult:
     """
 
     # Set after DB insert; None until then
-    request_id: Optional[UUID] = None
+    request_id: UUID | None = None
 
     # Per-evaluator scores (None = not run or errored)
-    scores: dict[str, Optional[float]] = field(default_factory=dict)
+    scores: dict[str, float | None] = field(default_factory=dict)
 
     # Names of evaluators whose score tripped the threshold
     flags: list[str] = field(default_factory=list)
 
     # Per-evaluator latencies in ms + total
-    latency_ms: dict[str, Optional[int]] = field(default_factory=dict)
+    latency_ms: dict[str, int | None] = field(default_factory=dict)
 
     # True if any input evaluator blocked the request
     blocked: bool = False
-    block_reason: Optional[str] = None
+    block_reason: str | None = None
 
 
 def assemble_result(
     input_results: list[EvalResult],
     output_results: list[EvalResult],
-    latency_llm: Optional[int],
+    latency_llm: int | None,
     latency_total: int,
 ) -> SentinelResult:
     """Build a SentinelResult from all evaluator outputs.
@@ -58,8 +57,8 @@ def assemble_result(
     all_results = input_results + output_results
     result_by_name = {r.evaluator_name: r for r in all_results}
 
-    scores: dict[str, Optional[float]] = {}
-    latencies: dict[str, Optional[int]] = {}
+    scores: dict[str, float | None] = {}
+    latencies: dict[str, int | None] = {}
     flags: list[str] = []
 
     for name in _EVALUATOR_NAMES:
@@ -75,7 +74,7 @@ def assemble_result(
     blocked = bool(flags and any(
         r.flag for r in input_results if r.evaluator_name in result_by_name
     ))
-    block_reason: Optional[str] = None
+    block_reason: str | None = None
     if blocked:
         # First flagged input evaluator determines the block reason
         for r in input_results:
@@ -96,8 +95,8 @@ def build_request_record(
     sentinel_result: SentinelResult,
     model: str,
     input_hash: str,
-    input_text: Optional[str],
-    input_redacted: Optional[str],
+    input_text: str | None,
+    input_redacted: str | None,
     has_context: bool,
 ) -> RequestRecord:
     """Populate a RequestRecord from a SentinelResult for DB persistence."""

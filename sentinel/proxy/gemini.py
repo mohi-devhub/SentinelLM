@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from sentinel.proxy.base import LLMClient
 
 
 class GeminiClient(LLMClient):
-    """LLM client for the Google Gemini API.
+    """LLM client for the Google Gemini API (google-genai SDK).
 
     Translates OpenAI-format messages to Gemini format (role 'assistant' →
     'model', system message → system_instruction) and normalises the response
@@ -19,7 +21,7 @@ class GeminiClient(LLMClient):
     def __init__(self, model: str, api_key: str, timeout: float = 60.0) -> None:
         self._model_name = model
         self._timeout = timeout
-        genai.configure(api_key=api_key)
+        self._client = genai.Client(api_key=api_key)
 
     async def chat(self, request: dict) -> dict:
         messages = request.get("messages", [])
@@ -34,28 +36,29 @@ class GeminiClient(LLMClient):
                 chat_messages.append(msg)
 
         # Convert OpenAI role names → Gemini role names
-        gemini_history = [
-            {
-                "role": "model" if m["role"] == "assistant" else "user",
-                "parts": [m["content"]],
-            }
+        gemini_contents = [
+            types.Content(
+                role="model" if m["role"] == "assistant" else "user",
+                parts=[types.Part(text=m["content"])],
+            )
             for m in chat_messages
         ]
 
-        generation_config: dict = {}
-        if "temperature" in request:
-            generation_config["temperature"] = request["temperature"]
-        if "max_tokens" in request:
-            generation_config["max_output_tokens"] = request["max_tokens"]
-
-        model = genai.GenerativeModel(
-            model_name=self._model_name,
+        cfg = types.GenerateContentConfig(
             system_instruction=system_instruction,
         )
+        if "temperature" in request:
+            cfg.temperature = request["temperature"]
+        if "max_tokens" in request:
+            cfg.max_output_tokens = request["max_tokens"]
 
-        response = await model.generate_content_async(
-            gemini_history,
-            generation_config=generation_config or None,
+        response = await asyncio.wait_for(
+            self._client.aio.models.generate_content(
+                model=self._model_name,
+                contents=gemini_contents,
+                config=cfg,
+            ),
+            timeout=self._timeout,
         )
 
         content = response.text if response.text else ""

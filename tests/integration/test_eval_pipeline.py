@@ -11,21 +11,18 @@ No real HTTP server required — _run_one is patched to return pre-built RunResu
 from __future__ import annotations
 
 import json
-import uuid
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from sentinel.eval_pipeline.reporter import compute_regression, compute_summary
 from sentinel.eval_pipeline.runner import (
+    EVALUATOR_NAMES,
     DatasetRecord,
     RunResult,
     load_dataset,
     run_eval,
-    EVALUATOR_NAMES,
 )
-from sentinel.eval_pipeline.reporter import compute_summary, compute_regression
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

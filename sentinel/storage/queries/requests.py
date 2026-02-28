@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid as _uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -174,9 +174,9 @@ async def get_scores(
     page: int = 1,
     limit: int = 50,
     flagged_only: bool = False,
-    evaluator: Optional[str] = None,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
+    evaluator: str | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """Return paginated request records with optional filters.
 
@@ -224,7 +224,7 @@ async def get_scores(
 
 async def get_request_by_id(
     pool: asyncpg.Pool, request_id: UUID
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Return full detail for a single request, or None if not found."""
     query = f"SELECT {_SCORE_COLS} FROM requests WHERE id = $1"
     async with pool.acquire() as conn:
@@ -252,7 +252,7 @@ async def submit_review(
     pool: asyncpg.Pool,
     request_id: UUID,
     label: str,
-    note: Optional[str],
+    note: str | None,
 ) -> bool:
     """Mark a request as reviewed. Returns True if a row was updated."""
     query = """

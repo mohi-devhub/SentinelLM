@@ -6,10 +6,9 @@ All tests mock the CrossEncoder — no real model is loaded.
 """
 from __future__ import annotations
 
-import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
-from unittest.mock import MagicMock, patch
 
 from sentinel.evaluators.base import EvalPayload
 
@@ -41,7 +40,6 @@ _MOCK_ID2LABEL = {0: "contradiction", 1: "entailment", 2: "neutral"}
 
 def _mock_cross_encoder(scores_per_pair: list[list[float]]) -> MagicMock:
     """Build a mock CrossEncoder whose predict() returns given softmax scores."""
-    import numpy as np
 
     mock_model_config = MagicMock()
     mock_model_config.id2label = _MOCK_ID2LABEL
@@ -64,7 +62,7 @@ def hallucination_evaluator():
     """HallucinationEvaluator with CrossEncoder mocked out."""
     mock_ce = _mock_cross_encoder([[0.05, 0.90, 0.05]])  # default: low contradiction
 
-    with patch("sentinel.evaluators.output.hallucination.CrossEncoder", return_value=mock_ce):
+    with patch("sentence_transformers.cross_encoder.CrossEncoder", return_value=mock_ce):
         from sentinel.evaluators.output.hallucination import HallucinationEvaluator  # noqa: PLC0415
 
         ev = HallucinationEvaluator(config=MOCK_CONFIG_HALLUCINATION)
@@ -182,7 +180,7 @@ def faithfulness_evaluator():
     """FaithfulnessEvaluator with CrossEncoder mocked out."""
     mock_ce = _mock_cross_encoder([[0.05, 0.90, 0.05]])  # default: high entailment
 
-    with patch("sentinel.evaluators.output.faithfulness.CrossEncoder", return_value=mock_ce):
+    with patch("sentence_transformers.cross_encoder.CrossEncoder", return_value=mock_ce):
         from sentinel.evaluators.output.faithfulness import FaithfulnessEvaluator  # noqa: PLC0415
 
         ev = FaithfulnessEvaluator(config=MOCK_CONFIG_FAITHFULNESS)
@@ -200,7 +198,9 @@ async def test_faithfulness_high_entailment_above_threshold(faithfulness_evaluat
         payload = EvalPayload(
             input_text="Who founded Apple?",
             output_text="Apple was founded by Steve Jobs.",
-            context_documents=["Apple Inc. was founded by Steve Jobs, Steve Wozniak, and Ronald Wayne."],
+            context_documents=[
+                "Apple Inc. was founded by Steve Jobs, Steve Wozniak, and Ronald Wayne."
+            ],
         )
         result = await faithfulness_evaluator.evaluate(payload)
 

@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint (ruff + mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run ruff (lint + import sort)
+        run: ruff check sentinel tests
+
+      - name: Run ruff format check
+        run: ruff format --check sentinel tests
+
+      - name: Run mypy
+        run: mypy sentinel
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: sentinel
+          POSTGRES_PASSWORD: sentinel
+          POSTGRES_DB: sentinellm
+        options: >-
+          --health-cmd "pg_isready -U sentinel -d sentinellm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      DATABASE_URL: postgresql://sentinel:sentinel@localhost:5432/sentinellm
+      REDIS_URL: redis://localhost:6379/0
+      SENTINEL_CONFIG_PATH: tests/test_config.yaml
+      SENTINEL_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Download spaCy model
+        run: python -m spacy download en_core_web_lg
+
+      - name: Apply DB schema
+        run: |
+          PGPASSWORD=sentinel psql -h localhost -U sentinel -d sentinellm \
+            -f sentinel/storage/schema.sql
+
+      - name: Run unit tests with coverage
+        run: >
+          pytest tests/unit
+          --cov=sentinel
+          --cov-report=term-missing
+          --cov-fail-under=60
+          -v
+
+  docker-build:
+    name: Docker build check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -f docker/Dockerfile.api -t sentinellm/api:ci .
+
+      - name: Build Dashboard image
+        run: docker build -f docker/Dockerfile.dashboard dashboard/ -t sentinellm/dashboard:ci

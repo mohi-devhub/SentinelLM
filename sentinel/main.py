@@ -1,16 +1,43 @@
 from __future__ import annotations
 
 import logging
+import logging.config
 import time
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 import redis.asyncio as aioredis
 import yaml
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import make_asgi_app
 
 logger = logging.getLogger(__name__)
+
+
+def _configure_logging(log_level: str = "INFO") -> None:
+    """Configure structured JSON logging for production."""
+    import sys
+
+    try:
+        from pythonjsonlogger import jsonlogger
+
+        handler = logging.StreamHandler(sys.stdout)
+        formatter = jsonlogger.JsonFormatter(
+            "%(asctime)s %(name)s %(levelname)s %(message)s",
+            rename_fields={"asctime": "timestamp", "levelname": "level", "name": "logger"},
+        )
+        handler.setFormatter(formatter)
+        root = logging.getLogger()
+        root.handlers.clear()
+        root.addHandler(handler)
+        root.setLevel(getattr(logging, log_level.upper(), logging.INFO))
+    except ImportError:
+        # Fall back to plain text logging if python-json-logger not installed
+        logging.basicConfig(
+            level=getattr(logging, log_level.upper(), logging.INFO),
+            format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        )
 
 
 def create_app(config_path: str | None = None) -> FastAPI:
@@ -38,6 +65,10 @@ def create_app(config_path: str | None = None) -> FastAPI:
                 config = yaml.safe_load(f)
         else:
             config = settings.config
+
+        # Configure logging early (uses log_level from config.yaml)
+        log_level = config.get("app", {}).get("log_level", "INFO")
+        _configure_logging(log_level)
 
         app.state.config = config
         app.state.start_time = time.monotonic()
@@ -73,6 +104,10 @@ def create_app(config_path: str | None = None) -> FastAPI:
         await app.state.redis.aclose()
         logger.info("SentinelLM shutdown complete")
 
+    from sentinel.settings import get_settings  # noqa: PLC0415
+
+    settings = get_settings()
+
     app = FastAPI(
         title="SentinelLM",
         version="1.0.0",
@@ -80,13 +115,29 @@ def create_app(config_path: str | None = None) -> FastAPI:
         lifespan=lifespan,
     )
 
-    # ── CORS — allow Next.js dashboard on any localhost port ─────────────────
+    # ── Prometheus metrics sub-application ───────────────────────────────────
+    metrics_app = make_asgi_app()
+    app.mount("/metrics", metrics_app)
+
+    # ── Middleware stack (applied bottom-up — first added = outermost) ────────
+    from sentinel.api.middleware import (  # noqa: PLC0415
+        APIKeyMiddleware,
+        PrometheusMiddleware,
+        RequestIDMiddleware,
+    )
+
+    app.add_middleware(PrometheusMiddleware)
+    app.add_middleware(RequestIDMiddleware)
+    app.add_middleware(APIKeyMiddleware, api_key=settings.api_key)
+
+    # ── CORS — origins from env var (comma-separated) ─────────────────────────
+    origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
-        allow_headers=["*"],
+        allow_headers=["*", "X-API-Key"],
     )
 
     # ── Routers ──────────────────────────────────────────────────────────────

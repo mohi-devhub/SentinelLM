@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional
 from uuid import UUID
 
 import httpx
@@ -50,7 +50,7 @@ class DatasetRecord:
     input: str
     model: str = "llama3.2"
     context_documents: list[str] = field(default_factory=list)
-    expected_output: Optional[str] = None
+    expected_output: str | None = None
     expected_blocked: bool = False
 
 
@@ -61,26 +61,26 @@ class RunResult:
     record: DatasetRecord
 
     # Sentinel scores keyed by evaluator name (None = not run or errored)
-    scores: dict[str, Optional[float]] = field(default_factory=dict)
+    scores: dict[str, float | None] = field(default_factory=dict)
 
     # Evaluator names whose score crossed the configured threshold
     flags: list[str] = field(default_factory=list)
 
     # True if an input evaluator blocked the request
     blocked: bool = False
-    block_reason: Optional[str] = None
+    block_reason: str | None = None
 
     # LLM response text (None for blocked requests)
-    actual_output: Optional[str] = None
+    actual_output: str | None = None
 
     # UUID returned in the sentinel response body (used to link to eval_results)
-    request_id: Optional[UUID] = None
+    request_id: UUID | None = None
 
     # Per-evaluator and total latency in ms from the sentinel header
-    latency_ms: dict[str, Optional[int]] = field(default_factory=dict)
+    latency_ms: dict[str, int | None] = field(default_factory=dict)
 
     # Non-None when the HTTP call itself failed (network error, server crash, etc.)
-    error: Optional[str] = None
+    error: str | None = None
 
     @property
     def passed(self) -> bool:
@@ -146,13 +146,13 @@ async def _run_one(
         data = resp.json()
         sentinel = data.get("sentinel", {})
 
-        output_text: Optional[str] = None
+        output_text: str | None = None
         try:
             output_text = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError):
             pass
 
-        request_id: Optional[UUID] = None
+        request_id: UUID | None = None
         try:
             request_id = UUID(sentinel["request_id"])
         except (KeyError, ValueError):
@@ -174,7 +174,7 @@ async def _run_one(
         block_code = err.get("code", "")
         blocking_ev = _BLOCK_CODE_TO_EVALUATOR.get(block_code, "unknown")
 
-        scores: dict[str, Optional[float]] = {k: None for k in EVALUATOR_NAMES}
+        scores: dict[str, float | None] = {k: None for k in EVALUATOR_NAMES}
         if blocking_ev in scores:
             scores[blocking_ev] = err.get("score")
 
@@ -198,7 +198,7 @@ async def run_eval(
     records: list[DatasetRecord],
     server_url: str,
     concurrency: int = 4,
-    on_progress: Optional[Callable[[int, int, RunResult], None]] = None,
+    on_progress: Callable[[int, int, RunResult], None] | None = None,
 ) -> list[RunResult]:
     """Send all records to the proxy concurrently (bounded by semaphore).
 

@@ -1,10 +1,15 @@
 FROM python:3.11-slim
 
+# Create non-root user for production security
+RUN groupadd --gid 1001 sentinel && \
+    useradd --uid 1001 --gid sentinel --shell /bin/bash --create-home sentinel
+
 WORKDIR /app
 
 # System dependencies required by spaCy and Presidio
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies first (layer cache: only re-runs if requirements change)
@@ -14,9 +19,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Download spaCy model required by Presidio — must run after pip install
 RUN python -m spacy download en_core_web_lg
 
-# Copy application source
-COPY . .
+# Copy application source and fix ownership
+COPY --chown=sentinel:sentinel . .
+
+# Switch to non-root user
+USER sentinel
 
 EXPOSE 8000
 
-CMD ["uvicorn", "sentinel.main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["uvicorn", "sentinel.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

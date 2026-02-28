@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Callable, Literal, Optional, TypeVar
+from typing import Literal, TypeVar
 
 T = TypeVar("T")
 
@@ -45,11 +46,11 @@ class EvalPayload:
     input_text: str
 
     # LLM response text — None for input-layer evaluators
-    output_text: Optional[str] = None
+    output_text: str | None = None
 
     # Source documents supplied for RAG grounding checks.
     # None for non-RAG requests.
-    context_documents: Optional[list[str]] = None
+    context_documents: list[str] | None = None
 
     # Full parsed config.yaml dict.
     # Evaluators read their own section: config["evaluators"][self.name]
@@ -73,7 +74,7 @@ class EvalResult:
     evaluator_name: str
 
     # Normalized score 0.0–1.0. None when evaluator was skipped or errored.
-    score: Optional[float]
+    score: float | None
 
     # Set by the chain runner after applying threshold — evaluators leave this False.
     flag: bool = False
@@ -83,11 +84,11 @@ class EvalResult:
 
     # Evaluator-specific detail (e.g. detected PII entities, toxicity dimensions).
     # Used for dashboard display and debug logging.
-    metadata: Optional[dict] = None
+    metadata: dict | None = None
 
     # Non-None when the evaluator raised an exception or timed out.
     # Always paired with score=None and flag=False (fail-open).
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class BaseEvaluator(ABC):
@@ -127,7 +128,7 @@ class BaseEvaluator(ABC):
     # ── Inference ────────────────────────────────────────────────────────────
 
     @abstractmethod
-    async def _run_inference(self, payload: EvalPayload) -> tuple[float, Optional[dict]]:
+    async def _run_inference(self, payload: EvalPayload) -> tuple[float, dict | None]:
         """Score the payload.
 
         Returns:

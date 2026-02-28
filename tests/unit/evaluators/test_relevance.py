@@ -5,12 +5,11 @@ All tests mock sentence_transformers — no real model is loaded or called.
 from __future__ import annotations
 
 import sys
-
-import pytest
 from unittest.mock import MagicMock, patch
 
-from sentinel.evaluators.base import EvalPayload
+import pytest
 
+from sentinel.evaluators.base import EvalPayload
 
 MOCK_CONFIG = {
     "evaluators": {

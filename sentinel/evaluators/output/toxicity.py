@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from sentinel.evaluators.base import BaseEvaluator, EvalPayload, run_in_executor
 
 
@@ -24,7 +22,7 @@ class ToxicityEvaluator(BaseEvaluator):
         # 'original' model is the lightest; weights ~500 MB, runs well on CPU/MPS
         self._model = Detoxify("original")
 
-    async def _run_inference(self, payload: EvalPayload) -> tuple[float, Optional[dict]]:
+    async def _run_inference(self, payload: EvalPayload) -> tuple[float, dict | None]:
         text = payload.output_text
         dimensions: list[str] = self.config.get(
             "dimensions", ["toxicity", "severe_toxicity", "threat", "insult", "identity_attack"]

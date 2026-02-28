@@ -13,7 +13,6 @@ import pytest
 
 from sentinel.evaluators.base import EvalPayload
 
-
 # ── Presidio stub types ───────────────────────────────────────────────────────
 
 @dataclass

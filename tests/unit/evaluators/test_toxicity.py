@@ -5,9 +5,9 @@ All tests mock Detoxify — no real model is loaded or called.
 from __future__ import annotations
 
 import sys
+from unittest.mock import MagicMock
 
 import pytest
-from unittest.mock import MagicMock
 
 from sentinel.evaluators.base import EvalPayload
 

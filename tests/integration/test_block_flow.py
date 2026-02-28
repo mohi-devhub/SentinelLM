@@ -10,13 +10,11 @@ Requires:
 from __future__ import annotations
 
 import asyncio
-import uuid
-
-import pytest
 from unittest.mock import AsyncMock, patch
 
-from sentinel.evaluators.base import EvalResult
+import pytest
 
+from sentinel.evaluators.base import EvalResult
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

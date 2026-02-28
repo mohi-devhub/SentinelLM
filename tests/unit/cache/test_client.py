@@ -4,12 +4,9 @@ All tests use a fake redis stub — no real Redis connection needed.
 """
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from sentinel.cache.client import cache_key, get_cached_scores, set_cached_scores
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 

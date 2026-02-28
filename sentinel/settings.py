@@ -3,19 +3,32 @@ from __future__ import annotations
 from functools import lru_cache
 
 import yaml
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    database_url: str
-    redis_url: str
-    config_path: str = "config.yaml"
-    env: str = "development"
-    openai_api_key: str = ""
-    anthropic_api_key: str = ""
-    gemini_api_key: str = ""
+    # Infrastructure — conventional names (no prefix)
+    database_url: str = Field(alias="DATABASE_URL")
+    redis_url: str = Field(alias="REDIS_URL")
+    # App config — SENTINEL_ prefixed
+    config_path: str = Field("config.yaml", alias="SENTINEL_CONFIG_PATH")
+    env: str = Field("development", alias="SENTINEL_ENV")
+    # Security — SENTINEL_ prefixed
+    # Comma-separated list of allowed CORS origins. Empty = allow none (use * only in dev).
+    cors_origins: str = Field(
+        "http://localhost:3000,http://127.0.0.1:3000",
+        alias="SENTINEL_CORS_ORIGINS",
+    )
+    # Optional API key. When set, all requests must include X-API-Key header.
+    # Leave empty to disable auth (development / local-only deployments).
+    api_key: str = Field("", alias="SENTINEL_API_KEY")
+    # LLM API keys — provider-conventional names (no prefix)
+    openai_api_key: str = Field("", alias="OPENAI_API_KEY")
+    anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
+    gemini_api_key: str = Field("", alias="GEMINI_API_KEY")
 
-    model_config = {"env_file": ".env", "env_prefix": "SENTINEL_"}
+    model_config = {"env_file": ".env", "populate_by_name": True}
 
     @property
     def config(self) -> dict:

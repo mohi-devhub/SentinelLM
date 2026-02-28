@@ -5,7 +5,6 @@ import json
 import logging
 import time
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
@@ -40,9 +39,9 @@ class Message(BaseModel):
 class ChatCompletionRequest(BaseModel):
     model: str
     messages: list[Message]
-    context_documents: Optional[list[str]] = None
-    temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
+    context_documents: list[str] | None = None
+    temperature: float | None = None
+    max_tokens: int | None = None
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -123,6 +122,16 @@ async def chat_completions(
         payload, http_request.app.state.input_evaluators, timeout
     )
 
+    # ── PII redact: flag but do NOT block; swap in the cleaned text ──────────
+    pii_redacted_text: str | None = None
+    if (
+        blocked_by
+        and blocked_by.evaluator_name == "pii"
+        and (blocked_by.metadata or {}).get("action") == "redact"
+    ):
+        pii_redacted_text = (blocked_by.metadata or {}).get("redacted_text", input_text)
+        blocked_by = None  # clear block — request continues with redacted text
+
     if blocked_by and not shadow_mode:
         latency_total = int((time.monotonic() - total_start) * 1000)
         sentinel_result = assemble_result(input_results, [], None, latency_total)
@@ -131,7 +140,9 @@ async def chat_completions(
             sentinel_result=sentinel_result,
             model=body.model,
             input_hash=input_hash,
-            input_text=input_text if config.get("storage", {}).get("store_input_text", True) else None,
+            input_text=(
+                input_text if config.get("storage", {}).get("store_input_text", True) else None
+            ),
             input_redacted=input_text,
             has_context=has_context,
         )
@@ -172,10 +183,20 @@ async def chat_completions(
     from sentinel.settings import get_settings  # noqa: PLC0415 — avoid module-level import
 
     settings = get_settings()
-    llm_client = get_llm_client(config, settings.openai_api_key, settings.anthropic_api_key, settings.gemini_api_key)
+    llm_client = get_llm_client(
+        config, settings.openai_api_key, settings.anthropic_api_key, settings.gemini_api_key
+    )
 
     # Strip context_documents — it is a SentinelLM extension, not an LLM API field
     request_dict = body.model_dump(exclude={"context_documents"}, exclude_none=True)
+
+    # Apply PII redaction: substitute sanitised text in the last user message
+    if pii_redacted_text:
+        msgs = request_dict.get("messages", [])
+        for i in range(len(msgs) - 1, -1, -1):
+            if msgs[i].get("role") == "user":
+                msgs[i] = {**msgs[i], "content": pii_redacted_text}
+                break
 
     llm_start = time.monotonic()
     try:
@@ -189,7 +210,7 @@ async def chat_completions(
     latency_llm = int((time.monotonic() - llm_start) * 1000)
 
     # Extract the assistant text for output evaluators
-    output_text: Optional[str] = None
+    output_text: str | None = None
     try:
         output_text = llm_response["choices"][0]["message"]["content"]
     except (KeyError, IndexError):

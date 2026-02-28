@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 
@@ -16,40 +15,40 @@ class RequestRecord:
     """
 
     # Set by DB default — leave as None before insert
-    id: Optional[UUID] = None
-    created_at: Optional[datetime] = None
+    id: UUID | None = None
+    created_at: datetime | None = None
 
     # Request metadata
     model: str = ""
     input_hash: str = ""
-    input_text: Optional[str] = None
-    input_redacted: Optional[str] = None
+    input_text: str | None = None
+    input_redacted: str | None = None
     has_context: bool = False
 
     # Block status
     blocked: bool = False
-    block_reason: Optional[str] = None
+    block_reason: str | None = None
 
     # Input evaluator scores
-    score_pii: Optional[float] = None
-    score_prompt_injection: Optional[float] = None
-    score_topic_guardrail: Optional[float] = None
+    score_pii: float | None = None
+    score_prompt_injection: float | None = None
+    score_topic_guardrail: float | None = None
 
     # Output evaluator scores
-    score_toxicity: Optional[float] = None
-    score_relevance: Optional[float] = None
-    score_hallucination: Optional[float] = None
-    score_faithfulness: Optional[float] = None
+    score_toxicity: float | None = None
+    score_relevance: float | None = None
+    score_hallucination: float | None = None
+    score_faithfulness: float | None = None
 
     # Latencies (ms)
-    latency_pii: Optional[int] = None
-    latency_prompt_injection: Optional[int] = None
-    latency_topic_guardrail: Optional[int] = None
-    latency_toxicity: Optional[int] = None
-    latency_relevance: Optional[int] = None
-    latency_hallucination: Optional[int] = None
-    latency_faithfulness: Optional[int] = None
-    latency_llm: Optional[int] = None
+    latency_pii: int | None = None
+    latency_prompt_injection: int | None = None
+    latency_topic_guardrail: int | None = None
+    latency_toxicity: int | None = None
+    latency_relevance: int | None = None
+    latency_hallucination: int | None = None
+    latency_faithfulness: int | None = None
+    latency_llm: int | None = None
     latency_total: int = 0
 
     # Flags
@@ -63,42 +62,42 @@ class RequestRecord:
 
     # Human review (not set at insert time)
     reviewed: bool = False
-    review_label: Optional[str] = None
-    reviewed_at: Optional[datetime] = None
-    reviewer_note: Optional[str] = None
+    review_label: str | None = None
+    reviewed_at: datetime | None = None
+    reviewer_note: str | None = None
 
 
 @dataclass
 class EvalRunRecord:
     """Python representation of a row in the `eval_runs` table."""
 
-    id: Optional[UUID] = None
-    created_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    id: UUID | None = None
+    created_at: datetime | None = None
+    completed_at: datetime | None = None
 
     label: str = ""
     dataset_path: str = ""
-    baseline_run_id: Optional[UUID] = None
+    baseline_run_id: UUID | None = None
 
     record_count: int = 0
     status: str = "running"  # running | complete | failed
 
     # Computed on completion; stored as JSON blobs in the DB
-    summary_json: Optional[dict] = None
-    regression_json: Optional[dict] = None
+    summary_json: dict | None = None
+    regression_json: dict | None = None
 
 
 @dataclass
 class EvalResultRecord:
     """Python representation of a row in the `eval_results` table."""
 
-    id: Optional[UUID] = None
-    eval_run_id: Optional[UUID] = None
-    request_id: Optional[UUID] = None
+    id: UUID | None = None
+    eval_run_id: UUID | None = None
+    request_id: UUID | None = None
 
     record_index: int = 0
     input_text: str = ""
-    expected_output: Optional[str] = None
-    actual_output: Optional[str] = None
+    expected_output: str | None = None
+    actual_output: str | None = None
 
     passed: bool = True

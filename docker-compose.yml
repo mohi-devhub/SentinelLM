@@ -16,6 +16,13 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - SENTINEL_CONFIG_PATH=/app/config.yaml
       - SENTINEL_ENV=development
+      # Optional: set in .env to enable auth / configure CORS in dev
+      - SENTINEL_API_KEY=${SENTINEL_API_KEY:-}
+      - SENTINEL_CORS_ORIGINS=${SENTINEL_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      # LLM API keys — set in .env the one matching llm_backend.provider in config.yaml
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

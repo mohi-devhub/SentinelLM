@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
@@ -16,10 +15,10 @@ router = APIRouter()
 @router.get("/v1/sentinel/scores")
 async def scores(
     request: Request,
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
+    start_date: datetime | None = Query(None),
+    end_date: datetime | None = Query(None),
     flagged_only: bool = Query(False),
-    evaluator: Optional[str] = Query(None, enum=[
+    evaluator: str | None = Query(None, enum=[
         "pii", "prompt_injection", "topic_guardrail",
         "toxicity", "relevance", "hallucination", "faithfulness",
     ]),

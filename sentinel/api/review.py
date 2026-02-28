@@ -1,7 +1,6 @@
 """GET /v1/sentinel/review + PATCH /v1/sentinel/review/{id} — human review queue."""
 from __future__ import annotations
 
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
@@ -17,7 +16,7 @@ _VALID_LABELS = {"correct_flag", "false_positive", "false_negative"}
 
 class ReviewSubmission(BaseModel):
     label: str
-    note: Optional[str] = None
+    note: str | None = None
 
 
 @router.get("/v1/sentinel/review")

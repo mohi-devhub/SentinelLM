@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import time
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -41,7 +40,7 @@ def eval_run(
         ..., "--label", "-l",
         help="Human-readable name for this run (must be unique).",
     ),
-    baseline: Optional[str] = typer.Option(
+    baseline: str | None = typer.Option(
         None, "--baseline", "-b",
         help="Label of a previous run to compare against for regression detection.",
     ),
@@ -53,7 +52,7 @@ def eval_run(
         4, "--concurrency", "-c",
         help="Max concurrent requests sent to the server.",
     ),
-    output: Optional[Path] = typer.Option(
+    output: Path | None = typer.Option(
         None, "--output", "-o",
         help="Write the scorecard report to this JSON file.",
     ),
@@ -74,10 +73,10 @@ def eval_run(
 async def _async_eval_run(
     dataset: Path,
     label: str,
-    baseline: Optional[str],
+    baseline: str | None,
     server: str,
     concurrency: int,
-    output: Optional[Path],
+    output: Path | None,
 ) -> None:
     from sentinel.eval_pipeline.reporter import (  # noqa: PLC0415
         compute_regression,
@@ -209,7 +208,6 @@ async def _async_eval_run(
             )
 
     # ── Compute scorecard ─────────────────────────────────────────────────────
-    from sentinel.eval_pipeline.reporter import compute_regression, compute_summary  # noqa: PLC0415
 
     summary = compute_summary(results)
     regression = None

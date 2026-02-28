@@ -13,8 +13,6 @@ Device selection:
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from sentinel.evaluators.base import BaseEvaluator, EvalPayload, run_in_executor
 
 
@@ -57,7 +55,7 @@ class PromptInjectionEvaluator(BaseEvaluator):
         # top_k=None returns scores for all labels so we can always find INJECTION
         self._model = pipeline("text-classification", model=model_id, device=device, top_k=None)
 
-    async def _run_inference(self, payload: EvalPayload) -> tuple[float, Optional[dict]]:
+    async def _run_inference(self, payload: EvalPayload) -> tuple[float, dict | None]:
         text = payload.input_text
 
         def _predict(t: str) -> list:

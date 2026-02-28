@@ -6,27 +6,26 @@ Tests cover the helper functions in requests.py and metrics.py.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from sentinel.storage.queries.requests import (
-    _row_to_dict,
     _VALID_EVALUATORS,
-    get_scores,
+    _row_to_dict,
     get_request_by_id,
     get_review_queue,
+    get_scores,
     submit_review,
 )
-
 
 # ── Fake asyncpg.Record ───────────────────────────────────────────────────────
 
 def _fake_row(**overrides) -> MagicMock:
     """Build a MagicMock that behaves like an asyncpg Record."""
     _id = uuid.uuid4()
-    _now = datetime(2026, 2, 28, 12, 0, 0, tzinfo=timezone.utc)
+    _now = datetime(2026, 2, 28, 12, 0, 0, tzinfo=UTC)
 
     defaults = {
         "id": _id,
