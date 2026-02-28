@@ -1,4 +1,5 @@
 """DB queries for eval_runs and eval_results tables."""
+
 from __future__ import annotations
 
 import json
@@ -67,6 +68,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+
 def _row_to_eval_run(row: asyncpg.Record) -> EvalRunRecord:
     summary = row["summary_json"]
     regression = row["regression_json"]
@@ -86,6 +88,7 @@ def _row_to_eval_run(row: asyncpg.Record) -> EvalRunRecord:
 
 # ── public API ───────────────────────────────────────────────────────────────
 
+
 async def insert_eval_run(
     pool: asyncpg.Pool,
     label: str,
@@ -95,9 +98,7 @@ async def insert_eval_run(
     """Create a new eval_run row in 'running' state and return it."""
     run_id = _uuid.uuid4()
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            _INSERT_EVAL_RUN, run_id, label, dataset_path, baseline_run_id
-        )
+        row = await conn.fetchrow(_INSERT_EVAL_RUN, run_id, label, dataset_path, baseline_run_id)
     return EvalRunRecord(
         id=row["id"],
         created_at=row["created_at"],
@@ -165,18 +166,14 @@ async def list_eval_runs(pool: asyncpg.Pool) -> list[EvalRunRecord]:
     return [_row_to_eval_run(r) for r in rows]
 
 
-async def get_eval_run_by_label(
-    pool: asyncpg.Pool, label: str
-) -> EvalRunRecord | None:
+async def get_eval_run_by_label(pool: asyncpg.Pool, label: str) -> EvalRunRecord | None:
     """Look up an eval run by its human-readable label."""
     async with pool.acquire() as conn:
         row = await conn.fetchrow(_GET_EVAL_RUN_BY_LABEL, label)
     return _row_to_eval_run(row) if row else None
 
 
-async def get_eval_run_by_id(
-    pool: asyncpg.Pool, run_id: UUID
-) -> EvalRunRecord | None:
+async def get_eval_run_by_id(pool: asyncpg.Pool, run_id: UUID) -> EvalRunRecord | None:
     """Look up an eval run by UUID."""
     async with pool.acquire() as conn:
         row = await conn.fetchrow(_GET_EVAL_RUN_BY_ID, run_id)

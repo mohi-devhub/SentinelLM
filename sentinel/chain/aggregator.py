@@ -71,9 +71,9 @@ def assemble_result(
     latencies["llm"] = latency_llm
     latencies["total"] = latency_total
 
-    blocked = bool(flags and any(
-        r.flag for r in input_results if r.evaluator_name in result_by_name
-    ))
+    blocked = bool(
+        flags and any(r.flag for r in input_results if r.evaluator_name in result_by_name)
+    )
     block_reason: str | None = None
     if blocked:
         # First flagged input evaluator determines the block reason

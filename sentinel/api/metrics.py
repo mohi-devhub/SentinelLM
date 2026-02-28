@@ -1,4 +1,5 @@
 """GET /v1/sentinel/metrics/* — aggregate metrics and summary stats."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Query, Request

@@ -15,9 +15,10 @@ T = TypeVar("T")
 # Size is overridden at startup from config performance.thread_pool_workers.
 _executor = ThreadPoolExecutor(max_workers=4)
 
+
 def set_executor_workers(n: int) -> None:
     """Replace the shared executor with one sized to n workers.
-    
+
     Called once at app startup after config is loaded.
     """
     global _executor

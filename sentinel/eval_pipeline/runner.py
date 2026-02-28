@@ -12,6 +12,7 @@ Dataset format (JSONL, one record per line):
         "expected_blocked": false                    # optional, for injection test records
     }
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -216,8 +217,7 @@ async def run_eval(
 
     async with httpx.AsyncClient() as client:
         tasks = [
-            asyncio.create_task(_run_one(client, server_url, rec, semaphore))
-            for rec in records
+            asyncio.create_task(_run_one(client, server_url, rec, semaphore)) for rec in records
         ]
         for coro in asyncio.as_completed(tasks):
             result = await coro

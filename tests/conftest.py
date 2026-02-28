@@ -3,6 +3,7 @@
 Unit tests use mock helpers directly and never need the app/db/redis fixtures.
 Integration tests require Docker services: postgres (sentinellm_test) + redis.
 """
+
 from __future__ import annotations
 
 import os
@@ -12,7 +13,9 @@ import pytest_asyncio
 
 # ── Test environment variables ───────────────────────────────────────────────
 # Set before any module that calls get_settings() is imported.
-os.environ.setdefault("DATABASE_URL", "postgresql://sentinel:sentinel@localhost:5432/sentinellm_test")
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql://sentinel:sentinel@localhost:5432/sentinellm_test"
+)
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/1")
 os.environ.setdefault("SENTINEL_CONFIG_PATH", "tests/test_config.yaml")
 
@@ -28,6 +31,7 @@ def clear_settings_cache():
 
 
 # ── App / client fixtures ────────────────────────────────────────────────────
+
 
 @pytest_asyncio.fixture
 async def client():
@@ -63,6 +67,7 @@ async def client():
 
 # ── Database fixture ─────────────────────────────────────────────────────────
 
+
 @pytest_asyncio.fixture
 async def db_pool():
     """Real asyncpg pool against sentinellm_test database.
@@ -77,13 +82,12 @@ async def db_pool():
     )
     yield pool
     async with pool.acquire() as conn:
-        await conn.execute(
-            "TRUNCATE requests, eval_runs, eval_results RESTART IDENTITY CASCADE"
-        )
+        await conn.execute("TRUNCATE requests, eval_runs, eval_results RESTART IDENTITY CASCADE")
     await pool.close()
 
 
 # ── Redis fixture ────────────────────────────────────────────────────────────
+
 
 @pytest_asyncio.fixture
 async def redis_client():
@@ -97,6 +101,7 @@ async def redis_client():
 
 
 # ── LLM response factory ─────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def mock_llm_response():
@@ -122,6 +127,7 @@ def mock_llm_response():
 
 
 # ── Evaluator result helper ──────────────────────────────────────────────────
+
 
 def make_eval_result(
     name: str,

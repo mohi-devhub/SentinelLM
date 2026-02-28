@@ -3,6 +3,7 @@
 Tests SentinelResult assembly and RequestRecord construction with
 pre-built EvalResult lists — no evaluators or models involved.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -16,6 +17,7 @@ def _result(name: str, score: float, flag: bool = False, latency_ms: int = 10) -
 
 
 # ── assemble_result ──────────────────────────────────────────────────────────
+
 
 def test_assemble_result_no_flags():
     """Clean results produce empty flags list and blocked=False."""
@@ -93,6 +95,7 @@ def test_assemble_result_errored_evaluator_score_is_none():
 
 
 # ── build_request_record ─────────────────────────────────────────────────────
+
 
 def test_build_request_record_maps_scores_and_flags():
     """RequestRecord receives correct scores and flag columns from SentinelResult."""

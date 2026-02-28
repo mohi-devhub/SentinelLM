@@ -8,6 +8,7 @@ Cache strategy:
 - Scores are stored as a Redis hash where each field is an evaluator name
   and each value is a JSON-encoded float or the string "null".
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -47,10 +48,7 @@ async def get_cached_scores(
     raw: dict[bytes, bytes] = await redis.hgetall(key)
     if not raw:
         return None
-    return {
-        field.decode(): json.loads(value.decode())
-        for field, value in raw.items()
-    }
+    return {field.decode(): json.loads(value.decode()) for field, value in raw.items()}
 
 
 async def set_cached_scores(

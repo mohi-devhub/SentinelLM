@@ -2,6 +2,7 @@
 
 All tests mock presidio_analyzer and presidio_anonymizer — no real models loaded.
 """
+
 from __future__ import annotations
 
 import sys
@@ -15,9 +16,11 @@ from sentinel.evaluators.base import EvalPayload
 
 # ── Presidio stub types ───────────────────────────────────────────────────────
 
+
 @dataclass
 class FakeRecognizerResult:
     """Minimal stand-in for presidio_analyzer.RecognizerResult."""
+
     entity_type: str
     score: float
     start: int
@@ -85,6 +88,7 @@ def _make_evaluator(config: dict, analyzer_results: list[Any], anonymized_text: 
 
 # ── Tests: metadata and class attributes ─────────────────────────────────────
 
+
 def test_evaluator_class_attributes():
     ev = _make_evaluator(MOCK_CONFIG, [])
     assert ev.name == "pii"
@@ -93,6 +97,7 @@ def test_evaluator_class_attributes():
 
 
 # ── Tests: no PII detected ────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_clean_input_score_is_zero():
@@ -110,6 +115,7 @@ async def test_clean_input_score_is_zero():
 
 
 # ── Tests: PII detected — action: block ──────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_detected_pii_score_is_max_confidence():
@@ -146,13 +152,12 @@ async def test_block_action_has_no_redacted_text():
 
 # ── Tests: action: redact ─────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_redact_action_includes_redacted_text():
     """action: redact should run the anonymizer and include redacted_text."""
     entities = [FakeRecognizerResult("PERSON", 0.90, 0, 8)]
-    redact_config = {
-        "evaluators": {"pii": {"enabled": True, "threshold": 0.5, "action": "redact"}}
-    }
+    redact_config = {"evaluators": {"pii": {"enabled": True, "threshold": 0.5, "action": "redact"}}}
     ev = _make_evaluator(redact_config, entities, anonymized_text="<PERSON> visited Paris.")
 
     payload = EvalPayload(input_text="John Doe visited Paris.")
@@ -166,6 +171,7 @@ async def test_redact_action_includes_redacted_text():
 
 
 # ── Tests: threshold filtering ────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_entities_below_threshold_are_filtered():
@@ -189,7 +195,7 @@ async def test_entities_below_threshold_are_filtered():
 async def test_only_entities_above_threshold_counted():
     """Only entities meeting or exceeding threshold contribute to the score."""
     entities = [
-        FakeRecognizerResult("PERSON", 0.40, 0, 8),   # below threshold → ignored
+        FakeRecognizerResult("PERSON", 0.40, 0, 8),  # below threshold → ignored
         FakeRecognizerResult("EMAIL_ADDRESS", 0.75, 9, 30),  # above threshold → counted
     ]
     ev = _make_evaluator(MOCK_CONFIG, entities)
@@ -204,6 +210,7 @@ async def test_only_entities_above_threshold_counted():
 
 
 # ── Tests: fail-open ─────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_analyzer_exception_returns_fail_open():

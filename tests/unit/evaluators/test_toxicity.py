@@ -2,6 +2,7 @@
 
 All tests mock Detoxify — no real model is loaded or called.
 """
+
 from __future__ import annotations
 
 import sys

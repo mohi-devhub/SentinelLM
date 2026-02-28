@@ -28,17 +28,21 @@ _SCORE_COLS = """
 """
 
 # Valid evaluator flag column names (whitelist for dynamic filter)
-_VALID_EVALUATORS = frozenset({
-    "pii", "prompt_injection", "topic_guardrail",
-    "toxicity", "relevance", "hallucination", "faithfulness",
-})
+_VALID_EVALUATORS = frozenset(
+    {
+        "pii",
+        "prompt_injection",
+        "topic_guardrail",
+        "toxicity",
+        "relevance",
+        "hallucination",
+        "faithfulness",
+    }
+)
 
 
 def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
-    flags = [
-        ev for ev in _VALID_EVALUATORS
-        if row[f"flag_{ev}"]
-    ]
+    flags = [ev for ev in _VALID_EVALUATORS if row[f"flag_{ev}"]]
     return {
         "id": str(row["id"]),
         "created_at": row["created_at"].isoformat(),
@@ -74,6 +78,7 @@ def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
         "review_label": row["review_label"],
         "reviewer_note": row["reviewer_note"],
     }
+
 
 # id is included so the proxy can pre-generate a UUID and include it in the
 # HTTP response before the background INSERT completes.
@@ -222,9 +227,7 @@ async def get_scores(
     return [_row_to_dict(r) for r in rows], total
 
 
-async def get_request_by_id(
-    pool: asyncpg.Pool, request_id: UUID
-) -> dict[str, Any] | None:
+async def get_request_by_id(pool: asyncpg.Pool, request_id: UUID) -> dict[str, Any] | None:
     """Return full detail for a single request, or None if not found."""
     query = f"SELECT {_SCORE_COLS} FROM requests WHERE id = $1"
     async with pool.acquire() as conn:
@@ -232,9 +235,7 @@ async def get_request_by_id(
     return _row_to_dict(row) if row else None
 
 
-async def get_review_queue(
-    pool: asyncpg.Pool, limit: int = 20
-) -> list[dict[str, Any]]:
+async def get_review_queue(pool: asyncpg.Pool, limit: int = 20) -> list[dict[str, Any]]:
     """Return unreviewed flagged requests, oldest first (review queue order)."""
     query = f"""
         SELECT {_SCORE_COLS}

@@ -4,6 +4,7 @@ Both use the same cross-encoder NLI model; they differ only in which label
 index they extract (contradiction vs entailment) and their flag_direction.
 All tests mock the CrossEncoder — no real model is loaded.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -49,13 +50,12 @@ def _mock_cross_encoder(scores_per_pair: list[list[float]]) -> MagicMock:
 
     mock_ce = MagicMock()
     mock_ce.model = mock_inner
-    mock_ce.predict.return_value = [
-        [s for s in row] for row in scores_per_pair
-    ]
+    mock_ce.predict.return_value = [[s for s in row] for row in scores_per_pair]
     return mock_ce
 
 
 # ── HallucinationEvaluator ────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def hallucination_evaluator():
@@ -175,6 +175,7 @@ async def test_hallucination_fail_open_on_model_error(hallucination_evaluator):
 
 # ── FaithfulnessEvaluator ─────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def faithfulness_evaluator():
     """FaithfulnessEvaluator with CrossEncoder mocked out."""
@@ -260,9 +261,7 @@ async def test_faithfulness_fail_open_on_model_error(faithfulness_evaluator):
     with patch("sentinel.evaluators.output.faithfulness.run_in_executor") as mock_exec:
         mock_exec.side_effect = ValueError("tensor shape mismatch")
 
-        payload = EvalPayload(
-            input_text="q", output_text="a", context_documents=["ctx"]
-        )
+        payload = EvalPayload(input_text="q", output_text="a", context_documents=["ctx"])
         result = await faithfulness_evaluator.evaluate(payload)
 
     assert result.score is None
@@ -271,6 +270,7 @@ async def test_faithfulness_fail_open_on_model_error(faithfulness_evaluator):
 
 
 # ── Class-level attribute checks ──────────────────────────────────────────────
+
 
 def test_hallucination_class_attributes():
     from sentinel.evaluators.output.hallucination import HallucinationEvaluator  # noqa: PLC0415

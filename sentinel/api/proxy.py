@@ -31,6 +31,7 @@ _BLOCK_CODE: dict[str, str] = {
 
 # ── Pydantic request model ───────────────────────────────────────────────────
 
+
 class Message(BaseModel):
     role: str
     content: str
@@ -45,6 +46,7 @@ class ChatCompletionRequest(BaseModel):
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def _extract_input_text(messages: list[Message]) -> str:
     """Return the last user-role message content as the evaluator input."""
@@ -76,21 +78,24 @@ async def _log_and_broadcast(
         logger.exception("failed to insert request record id=%s", request_id)
 
     try:
-        await ws_manager.broadcast({
-            "event_type": "request_blocked" if sentinel_result.blocked else "request_passed",
-            "request_id": str(request_id),
-            "model": record.model,
-            "blocked": sentinel_result.blocked,
-            "block_reason": sentinel_result.block_reason,
-            "flags": sentinel_result.flags,
-            "scores": sentinel_result.scores,
-            "latency_total": record.latency_total,
-        })
+        await ws_manager.broadcast(
+            {
+                "event_type": "request_blocked" if sentinel_result.blocked else "request_passed",
+                "request_id": str(request_id),
+                "model": record.model,
+                "blocked": sentinel_result.blocked,
+                "block_reason": sentinel_result.block_reason,
+                "flags": sentinel_result.flags,
+                "scores": sentinel_result.scores,
+                "latency_total": record.latency_total,
+            }
+        )
     except Exception:
         logger.exception("failed to broadcast ws event id=%s", request_id)
 
 
 # ── Route ────────────────────────────────────────────────────────────────────
+
 
 @router.post("/v1/chat/completions")
 async def chat_completions(

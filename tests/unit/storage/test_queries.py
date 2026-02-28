@@ -3,6 +3,7 @@
 All tests use asyncpg MagicMocks — no real database connection required.
 Tests cover the helper functions in requests.py and metrics.py.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -21,6 +22,7 @@ from sentinel.storage.queries.requests import (
 )
 
 # ── Fake asyncpg.Record ───────────────────────────────────────────────────────
+
 
 def _fake_row(**overrides) -> MagicMock:
     """Build a MagicMock that behaves like an asyncpg Record."""
@@ -72,6 +74,7 @@ def _fake_row(**overrides) -> MagicMock:
 
 
 # ── _row_to_dict ──────────────────────────────────────────────────────────────
+
 
 def test_row_to_dict_basic_fields():
     """_row_to_dict correctly maps all scalar fields."""
@@ -136,6 +139,7 @@ def test_row_to_dict_created_at_is_isoformat():
 
 # ── get_scores ────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def mock_pool():
     """asyncpg Pool mock with acquire() as an async context manager."""
@@ -154,7 +158,7 @@ async def test_get_scores_returns_list_and_total(mock_pool):
     """get_scores returns (items, total) tuple."""
     pool, conn = mock_pool
     row = _fake_row()
-    conn.fetchval = AsyncMock(return_value=1)   # total count
+    conn.fetchval = AsyncMock(return_value=1)  # total count
     conn.fetch = AsyncMock(return_value=[row])
 
     items, total = await get_scores(pool, page=1, limit=10)
@@ -193,6 +197,7 @@ async def test_get_scores_invalid_evaluator_ignored(mock_pool):
 
 # ── get_request_by_id ─────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_get_request_by_id_found(mock_pool):
     """Returns a dict when a row with the given ID exists."""
@@ -220,6 +225,7 @@ async def test_get_request_by_id_not_found(mock_pool):
 
 # ── get_review_queue ──────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_get_review_queue_returns_flagged_rows(mock_pool):
     """Returns list of dicts for unreviewed flagged rows."""
@@ -244,6 +250,7 @@ async def test_get_review_queue_empty(mock_pool):
 
 
 # ── submit_review ─────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_submit_review_returns_true_on_success(mock_pool):

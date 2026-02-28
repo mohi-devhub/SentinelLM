@@ -2,6 +2,7 @@
 
 All tests mock sentence_transformers — no real model is loaded or called.
 """
+
 from __future__ import annotations
 
 import sys
@@ -63,6 +64,7 @@ def evaluator():
 
 # ── Basic score tests ─────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_relevant_output_scores_above_threshold(evaluator):
     """High cosine similarity → score above threshold → no flag."""
@@ -113,6 +115,7 @@ async def test_score_clamped_to_zero_for_negative_cosine(evaluator):
 
 
 # ── Edge cases ────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_skipped_when_no_output_text(evaluator):

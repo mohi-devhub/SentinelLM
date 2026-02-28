@@ -18,6 +18,7 @@ Device note:
     MPS backend is not fully supported for cross-encoder inference. The device
     setting is respected but 'auto' always resolves to 'cpu' here.
 """
+
 from __future__ import annotations
 
 from sentinel.evaluators.base import BaseEvaluator, EvalPayload, run_in_executor

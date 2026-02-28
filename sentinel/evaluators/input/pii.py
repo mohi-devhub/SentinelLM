@@ -11,6 +11,7 @@ A score of 0.0 means no PII was detected above the confidence threshold.
 spaCy model must be downloaded before first use:
     python -m spacy download en_core_web_lg
 """
+
 from __future__ import annotations
 
 from sentinel.evaluators.base import BaseEvaluator, EvalPayload, run_in_executor
@@ -31,22 +32,24 @@ class PIIEvaluator(BaseEvaluator):
     # Entity types considered genuinely sensitive PII.
     # Excludes LOCATION (country/city names are not private) and other
     # non-sensitive NER categories that Presidio detects by default.
-    _SENSITIVE_ENTITY_TYPES: frozenset[str] = frozenset({
-        "PERSON",
-        "PHONE_NUMBER",
-        "EMAIL_ADDRESS",
-        "CREDIT_CARD",
-        "US_SSN",
-        "US_BANK_NUMBER",
-        "US_PASSPORT",
-        "US_DRIVER_LICENSE",
-        "IP_ADDRESS",
-        "IBAN_CODE",
-        "MEDICAL_LICENSE",
-        "DATE_TIME",
-        "NRP",
-        "URL",
-    })
+    _SENSITIVE_ENTITY_TYPES: frozenset[str] = frozenset(
+        {
+            "PERSON",
+            "PHONE_NUMBER",
+            "EMAIL_ADDRESS",
+            "CREDIT_CARD",
+            "US_SSN",
+            "US_BANK_NUMBER",
+            "US_PASSPORT",
+            "US_DRIVER_LICENSE",
+            "IP_ADDRESS",
+            "IBAN_CODE",
+            "MEDICAL_LICENSE",
+            "DATE_TIME",
+            "NRP",
+            "URL",
+        }
+    )
 
     def _load_model(self) -> None:
         from presidio_analyzer import AnalyzerEngine  # noqa: PLC0415
@@ -97,6 +100,7 @@ class PIIEvaluator(BaseEvaluator):
         metadata: dict = {"entities": entities, "action": action}
 
         if action == "redact":
+
             def _anonymize(t: str, res: list) -> str:
                 return self._anonymizer.anonymize(text=t, analyzer_results=res).text
 

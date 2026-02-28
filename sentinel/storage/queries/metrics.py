@@ -1,4 +1,5 @@
 """Aggregate metrics queries for the dashboard charts and summary cards."""
+
 from __future__ import annotations
 
 from typing import Any

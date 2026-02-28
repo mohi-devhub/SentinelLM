@@ -2,6 +2,7 @@
 
 All tests mock transformers.pipeline — no real model is downloaded or called.
 """
+
 from __future__ import annotations
 
 import sys
@@ -54,6 +55,7 @@ def _make_evaluator(config: dict, pipeline_return_value: list) -> object:
 
 # ── Class attributes ──────────────────────────────────────────────────────────
 
+
 def test_evaluator_class_attributes():
     ev = _make_evaluator(MOCK_CONFIG, [])
     assert ev.name == "prompt_injection"
@@ -62,6 +64,7 @@ def test_evaluator_class_attributes():
 
 
 # ── Score extraction: flat list format ───────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_injection_score_extracted_from_flat_list():
@@ -100,6 +103,7 @@ async def test_injection_score_extracted_from_nested_list():
 
 # ── Legitimate input ──────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_legitimate_input_low_injection_score():
     """Clean input produces a low INJECTION probability."""
@@ -119,6 +123,7 @@ async def test_legitimate_input_low_injection_score():
 
 # ── INJECTION label is absent ─────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_missing_injection_label_returns_zero():
     """If INJECTION label is absent from pipeline output, score defaults to 0.0."""
@@ -132,6 +137,7 @@ async def test_missing_injection_label_returns_zero():
 
 
 # ── Metadata ──────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_result_metadata_contains_labels():
@@ -152,6 +158,7 @@ async def test_result_metadata_contains_labels():
 
 # ── Fail-open ─────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_pipeline_exception_returns_fail_open():
     """If the pipeline raises, evaluate() returns score=None, flag=False."""
@@ -168,6 +175,7 @@ async def test_pipeline_exception_returns_fail_open():
 
 
 # ── Device resolution ─────────────────────────────────────────────────────────
+
 
 def test_resolve_device_cpu_passthrough():
     from sentinel.evaluators.input.prompt_injection import _resolve_device

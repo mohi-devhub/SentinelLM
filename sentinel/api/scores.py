@@ -1,4 +1,5 @@
 """GET /v1/sentinel/scores — paginated score history and single-record detail."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -18,10 +19,18 @@ async def scores(
     start_date: datetime | None = Query(None),
     end_date: datetime | None = Query(None),
     flagged_only: bool = Query(False),
-    evaluator: str | None = Query(None, enum=[
-        "pii", "prompt_injection", "topic_guardrail",
-        "toxicity", "relevance", "hallucination", "faithfulness",
-    ]),
+    evaluator: str | None = Query(
+        None,
+        enum=[
+            "pii",
+            "prompt_injection",
+            "topic_guardrail",
+            "toxicity",
+            "relevance",
+            "hallucination",
+            "faithfulness",
+        ],
+    ),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
 ) -> JSONResponse:

@@ -11,6 +11,7 @@ Device selection:
   device: cpu   — force CPU
   device: mps   — force MPS (not recommended; use auto)
 """
+
 from __future__ import annotations
 
 from sentinel.evaluators.base import BaseEvaluator, EvalPayload, run_in_executor

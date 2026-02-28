@@ -8,6 +8,7 @@ Tests cover:
 
 No real HTTP server required — _run_one is patched to return pre-built RunResults.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,6 +26,7 @@ from sentinel.eval_pipeline.runner import (
 )
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _pass_result(index: int = 0, **score_overrides) -> RunResult:
     """Build a passing RunResult with all scores set."""
@@ -57,6 +59,7 @@ def _error_result(index: int = 0) -> RunResult:
 
 
 # ── load_dataset ──────────────────────────────────────────────────────────────
+
 
 def test_load_dataset_minimal_record(tmp_path):
     """Minimal record (only 'input') parses with correct defaults."""
@@ -97,12 +100,7 @@ def test_load_dataset_full_record(tmp_path):
 def test_load_dataset_ignores_blank_lines(tmp_path):
     """Blank lines between records are silently skipped."""
     f = tmp_path / "ds.jsonl"
-    f.write_text(
-        json.dumps({"input": "Q1"}) + "\n"
-        "\n"
-        "\n"
-        + json.dumps({"input": "Q2"}) + "\n"
-    )
+    f.write_text(json.dumps({"input": "Q1"}) + "\n\n\n" + json.dumps({"input": "Q2"}) + "\n")
 
     records = load_dataset(f)
     assert len(records) == 2
@@ -115,7 +113,8 @@ def test_load_dataset_ignores_comment_lines(tmp_path):
     f = tmp_path / "ds.jsonl"
     f.write_text(
         "# This is a comment\n"
-        + json.dumps({"input": "Real record"}) + "\n"
+        + json.dumps({"input": "Real record"})
+        + "\n"
         + "# Another comment\n"
     )
 
@@ -139,15 +138,19 @@ def test_load_dataset_multiple_records(tmp_path):
     """All records in a multi-line JSONL file are loaded."""
     f = tmp_path / "ds.jsonl"
     f.write_text(
-        json.dumps({"input": "alpha"}) + "\n"
-        + json.dumps({"input": "beta"}) + "\n"
-        + json.dumps({"input": "gamma"}) + "\n"
+        json.dumps({"input": "alpha"})
+        + "\n"
+        + json.dumps({"input": "beta"})
+        + "\n"
+        + json.dumps({"input": "gamma"})
+        + "\n"
     )
     records = load_dataset(f)
     assert len(records) == 3
 
 
 # ── RunResult.passed ──────────────────────────────────────────────────────────
+
 
 def test_run_result_passed_when_no_flags():
     result = _pass_result()
@@ -179,6 +182,7 @@ def test_run_result_passed_is_false_when_error():
 
 
 # ── run_eval ──────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_run_eval_all_pass(tmp_path):
@@ -289,6 +293,7 @@ async def test_run_eval_empty_dataset():
 
 # ── compute_summary ───────────────────────────────────────────────────────────
 
+
 def test_compute_summary_all_keys_present():
     """compute_summary returns stats for every evaluator name."""
     results = [_pass_result(i) for i in range(5)]
@@ -345,6 +350,7 @@ def test_compute_summary_empty_results():
 
 
 # ── compute_regression ────────────────────────────────────────────────────────
+
 
 def test_compute_regression_detects_regression():
     """Flag rate increase > 5pp is marked as regression."""

@@ -7,6 +7,7 @@ Requires:
   - PostgreSQL running at localhost:5432 (sentinellm_test database)
   - Redis running at localhost:6379
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -18,6 +19,7 @@ from sentinel.evaluators.base import EvalResult
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _flagged_result(evaluator_name: str, score: float, code: str) -> EvalResult:
     r = EvalResult(evaluator_name=evaluator_name, score=score, flag=True, latency_ms=5)
     return r
@@ -25,9 +27,7 @@ def _flagged_result(evaluator_name: str, score: float, code: str) -> EvalResult:
 
 def _patch_input_chain(evaluator_name: str, score: float):
     """Context manager: patch run_input_chain to return a single flagged result."""
-    flagged = EvalResult(
-        evaluator_name=evaluator_name, score=score, flag=True, latency_ms=5
-    )
+    flagged = EvalResult(evaluator_name=evaluator_name, score=score, flag=True, latency_ms=5)
     return patch(
         "sentinel.chain.runner.run_input_chain",
         new_callable=AsyncMock,
@@ -36,6 +36,7 @@ def _patch_input_chain(evaluator_name: str, score: float):
 
 
 # ── Prompt injection block ────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_prompt_injection_block_returns_400(client):
@@ -77,6 +78,7 @@ async def test_prompt_injection_response_has_no_choices(client):
 
 # ── PII block ─────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_pii_block_returns_correct_error_code(client):
     """PII flag → 400 with pii_detected error code."""
@@ -97,6 +99,7 @@ async def test_pii_block_returns_correct_error_code(client):
 
 # ── Topic guardrail block ─────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_topic_guardrail_block_returns_correct_error_code(client):
     """Topic guardrail flag → 400 with off_topic error code."""
@@ -115,6 +118,7 @@ async def test_topic_guardrail_block_returns_correct_error_code(client):
 
 
 # ── DB logging for blocked requests ──────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_blocked_request_is_logged_to_db(client, db_pool):
@@ -135,9 +139,7 @@ async def test_blocked_request_is_logged_to_db(client, db_pool):
 
     # Blocked requests may not return a sentinel body — query by most recent row
     async with db_pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT * FROM requests ORDER BY created_at DESC LIMIT 1"
-        )
+        row = await conn.fetchrow("SELECT * FROM requests ORDER BY created_at DESC LIMIT 1")
 
     assert row is not None
     assert row["blocked"] is True
@@ -145,6 +147,7 @@ async def test_blocked_request_is_logged_to_db(client, db_pool):
 
 
 # ── Pass after near-threshold score ──────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_near_threshold_score_does_not_block(client, mock_llm_response):
@@ -171,6 +174,7 @@ async def test_near_threshold_score_does_not_block(client, mock_llm_response):
 
 # ── LLM backend error (not a block) ──────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_llm_error_returns_502_not_400(client):
     """LLM backend failure returns 502, not 400 (distinct from sentinel block)."""
@@ -193,13 +197,12 @@ async def test_llm_error_returns_502_not_400(client):
 
 # ── Multiple evaluators — first block wins ────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_only_one_block_reason_returned(client):
     """Even if multiple evaluators would flag, only one block error is returned."""
     # Patch to return one flagged result as blocked_by
-    flagged = EvalResult(
-        evaluator_name="prompt_injection", score=0.94, flag=True, latency_ms=5
-    )
+    flagged = EvalResult(evaluator_name="prompt_injection", score=0.94, flag=True, latency_ms=5)
     with patch(
         "sentinel.chain.runner.run_input_chain",
         new_callable=AsyncMock,

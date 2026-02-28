@@ -14,6 +14,7 @@ flag_direction = 'below': flag when score < threshold (off-topic).
 Topic embeddings are pre-computed once at startup and reused for every request,
 so per-request cost is just one forward pass for the user's input.
 """
+
 from __future__ import annotations
 
 from sentinel.evaluators.base import BaseEvaluator, EvalPayload, run_in_executor
@@ -36,9 +37,7 @@ class TopicGuardrailEvaluator(BaseEvaluator):
     def _load_model(self) -> None:
         from sentence_transformers import SentenceTransformer  # noqa: PLC0415
 
-        model_id: str = self.config.get(
-            "embedding_model", "sentence-transformers/all-MiniLM-L6-v2"
-        )
+        model_id: str = self.config.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
         self._model = SentenceTransformer(model_id)
 
         allowed_topics: list[str] = self.config.get("allowed_topics", [])

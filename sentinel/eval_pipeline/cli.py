@@ -7,6 +7,7 @@ Usage examples:
     sentinel eval run --dataset evals/golden_qa.jsonl --label run_20260228 --baseline run_20260227
     sentinel eval list
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -29,31 +30,44 @@ app.add_typer(eval_app, name="eval")
 
 # ── eval run ──────────────────────────────────────────────────────────────────
 
+
 @eval_app.command("run")
 def eval_run(
     dataset: Path = typer.Option(
-        ..., "--dataset", "-d",
+        ...,
+        "--dataset",
+        "-d",
         help="Path to the golden JSONL dataset.",
-        exists=True, readable=True,
+        exists=True,
+        readable=True,
     ),
     label: str = typer.Option(
-        ..., "--label", "-l",
+        ...,
+        "--label",
+        "-l",
         help="Human-readable name for this run (must be unique).",
     ),
     baseline: str | None = typer.Option(
-        None, "--baseline", "-b",
+        None,
+        "--baseline",
+        "-b",
         help="Label of a previous run to compare against for regression detection.",
     ),
     server: str = typer.Option(
-        "http://localhost:8000", "--server",
+        "http://localhost:8000",
+        "--server",
         help="Base URL of the running SentinelLM server.",
     ),
     concurrency: int = typer.Option(
-        4, "--concurrency", "-c",
+        4,
+        "--concurrency",
+        "-c",
         help="Max concurrent requests sent to the server.",
     ),
     output: Path | None = typer.Option(
-        None, "--output", "-o",
+        None,
+        "--output",
+        "-o",
         help="Write the scorecard report to this JSON file.",
     ),
 ) -> None:
@@ -164,8 +178,10 @@ async def _async_eval_run(
 
         def on_progress(completed: int, total: int, result) -> None:
             results.append(result)
-            status = "[red]BLOCKED[/red]" if result.blocked else (
-                "[yellow]FLAGGED[/yellow]" if result.flags else "[green]PASS[/green]"
+            status = (
+                "[red]BLOCKED[/red]"
+                if result.blocked
+                else ("[yellow]FLAGGED[/yellow]" if result.flags else "[green]PASS[/green]")
             )
             desc = f"[{result.record.record_index + 1}/{total}] {status}"
             if result.error:
@@ -255,6 +271,7 @@ async def _async_eval_run(
 
 
 # ── eval list ─────────────────────────────────────────────────────────────────
+
 
 @eval_app.command("list")
 def eval_list() -> None:

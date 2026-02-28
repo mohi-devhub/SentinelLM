@@ -10,6 +10,7 @@ Score interpretation:
 
 flag_direction = 'below': flag when score < threshold (irrelevant response).
 """
+
 from __future__ import annotations
 
 from sentinel.evaluators.base import BaseEvaluator, EvalPayload, run_in_executor
@@ -34,9 +35,7 @@ class RelevanceEvaluator(BaseEvaluator):
     def _load_model(self) -> None:
         from sentence_transformers import SentenceTransformer  # noqa: PLC0415
 
-        model_id: str = self.config.get(
-            "embedding_model", "sentence-transformers/all-MiniLM-L6-v2"
-        )
+        model_id: str = self.config.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
         self._model = SentenceTransformer(model_id)
 
     async def _run_inference(self, payload: EvalPayload) -> tuple[float, dict | None]:

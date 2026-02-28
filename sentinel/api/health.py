@@ -33,7 +33,9 @@ async def _check_llm_backend(config: dict) -> bool:
     provider = config.get("llm_backend", {}).get("provider", "ollama")
     if provider != "ollama":
         return True  # assume cloud APIs are up; checking would cost tokens
-    base_url = config.get("llm_backend", {}).get("ollama", {}).get("base_url", "http://ollama:11434")
+    base_url = (
+        config.get("llm_backend", {}).get("ollama", {}).get("base_url", "http://ollama:11434")
+    )
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
             resp = await client.get(f"{base_url}/api/tags")
@@ -88,9 +90,11 @@ async def active_config(request: Request) -> JSONResponse:
             "threshold": ev_cfg.get("threshold"),
         }
 
-    return JSONResponse(content={
-        "config_version": app_cfg.get("config_version", ""),
-        "llm_provider": provider,
-        "llm_model": model,
-        "evaluators": evaluators_out,
-    })
+    return JSONResponse(
+        content={
+            "config_version": app_cfg.get("config_version", ""),
+            "llm_provider": provider,
+            "llm_model": model,
+            "evaluators": evaluators_out,
+        }
+    )

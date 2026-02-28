@@ -48,8 +48,7 @@ async def run_input_chain(
 
     # Map task → evaluator so we can call is_flagged() when each completes
     task_to_ev: dict[asyncio.Task, BaseEvaluator] = {
-        asyncio.create_task(_run_with_timeout(ev, payload, timeout)): ev
-        for ev in evaluators
+        asyncio.create_task(_run_with_timeout(ev, payload, timeout)): ev for ev in evaluators
     }
 
     pending: set[asyncio.Task] = set(task_to_ev.keys())
@@ -65,9 +64,7 @@ async def run_input_chain(
             except Exception as exc:
                 # evaluate() already catches all exceptions, but be defensive
                 ev = task_to_ev[task]
-                result = EvalResult(
-                    evaluator_name=ev.name, score=None, flag=False, error=str(exc)
-                )
+                result = EvalResult(evaluator_name=ev.name, score=None, flag=False, error=str(exc))
 
             ev = task_to_ev[task]
 

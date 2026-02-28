@@ -7,6 +7,7 @@ Requires:
 The LLM client is mocked at the factory level — no real LLM backend needed.
 Evaluator models are mocked in the `client` fixture (see conftest.py).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +17,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 # ── Happy path ────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_clean_request_returns_200_with_sentinel_metadata(client, mock_llm_response):
@@ -72,6 +74,7 @@ async def test_sentinel_scores_include_toxicity(client, mock_llm_response):
 
 # ── Block path ────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_blocked_input_returns_400_sentinel_block(client):
     """When an input evaluator flags, the endpoint returns 400 with sentinel_block error."""
@@ -110,6 +113,7 @@ async def test_blocked_input_returns_400_sentinel_block(client):
 
 # ── DB logging ────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_request_is_logged_to_db(client, db_pool, mock_llm_response):
     """Every passing request must be persisted to the requests table."""
@@ -134,9 +138,7 @@ async def test_request_is_logged_to_db(client, db_pool, mock_llm_response):
     await asyncio.sleep(0.1)
 
     async with db_pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT * FROM requests WHERE id = $1", uuid.UUID(request_id)
-        )
+        row = await conn.fetchrow("SELECT * FROM requests WHERE id = $1", uuid.UUID(request_id))
 
     assert row is not None
     assert row["blocked"] is False

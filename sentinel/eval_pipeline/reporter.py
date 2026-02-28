@@ -1,4 +1,5 @@
 """Scorecard computation and rich terminal output for eval runs."""
+
 from __future__ import annotations
 
 import json
@@ -17,6 +18,7 @@ REGRESSION_THRESHOLD = 0.05
 
 # ── Statistics helpers ────────────────────────────────────────────────────────
 
+
 def _percentile(data: list[float], p: float) -> float:
     """Linear-interpolation percentile; returns 0.0 for empty lists."""
     if not data:
@@ -29,6 +31,7 @@ def _percentile(data: list[float], p: float) -> float:
 
 
 # ── Scorecard computation ─────────────────────────────────────────────────────
+
 
 def compute_summary(results: list[RunResult]) -> dict:
     """Compute per-evaluator stats from a list of RunResults.
@@ -46,11 +49,7 @@ def compute_summary(results: list[RunResult]) -> dict:
     summary: dict = {}
 
     for ev in EVALUATOR_NAMES:
-        scores = [
-            r.scores[ev]
-            for r in results
-            if r.scores.get(ev) is not None
-        ]
+        scores = [r.scores[ev] for r in results if r.scores.get(ev) is not None]
         flag_count = sum(1 for r in results if ev in r.flags)
 
         summary[ev] = {
@@ -98,6 +97,7 @@ def compute_regression(current: dict, baseline: dict) -> dict:
 
 
 # ── Terminal output ───────────────────────────────────────────────────────────
+
 
 def print_report(
     console: Console,

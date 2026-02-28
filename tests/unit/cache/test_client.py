@@ -2,6 +2,7 @@
 
 All tests use a fake redis stub — no real Redis connection needed.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from sentinel.cache.client import cache_key, get_cached_scores, set_cached_scores
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 class FakeRedis:
     """Minimal in-memory Redis stub for testing hset/hgetall/expire."""
@@ -29,6 +31,7 @@ class FakeRedis:
 
 
 # ── cache_key ────────────────────────────────────────────────────────────────
+
 
 def test_cache_key_has_prefix():
     key = cache_key("hello", "1")
@@ -55,6 +58,7 @@ def test_cache_key_length():
 
 # ── get_cached_scores — miss ──────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_cache_miss_returns_none():
     redis = FakeRedis()
@@ -63,6 +67,7 @@ async def test_cache_miss_returns_none():
 
 
 # ── set / get round-trip ──────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_round_trip_float_scores():

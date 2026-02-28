@@ -1,4 +1,5 @@
 """Production middleware: API key auth, request ID propagation, Prometheus metrics."""
+
 from __future__ import annotations
 
 import time
