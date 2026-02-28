@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
 T = TypeVar("T")
 
@@ -118,7 +118,7 @@ class BaseEvaluator(ABC):
         `config` is the full parsed config.yaml dict. Called once at startup.
         """
         self.config = config.get("evaluators", {}).get(self.name, {})
-        self._model = None
+        self._model: Any = None
         self._load_model()
 
     @abstractmethod

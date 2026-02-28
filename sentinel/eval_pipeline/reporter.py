@@ -49,7 +49,7 @@ def compute_summary(results: list[RunResult]) -> dict:
     summary: dict = {}
 
     for ev in EVALUATOR_NAMES:
-        scores = [r.scores[ev] for r in results if r.scores.get(ev) is not None]
+        scores: list[float] = [v for r in results if (v := r.scores.get(ev)) is not None]
         flag_count = sum(1 for r in results if ev in r.flags)
 
         summary[ev] = {

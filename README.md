@@ -16,13 +16,25 @@ SentinelLM is an open-source proxy middleware that sits between your application
 
 It is a **drop-in replacement** for your existing LLM client — point your `base_url` at `http://localhost:8000/v1` and it works with no other changes, regardless of whether you're running Ollama locally, OpenAI, Anthropic, or Gemini.
 
+## Key Features
+
+- **Dual-layer evaluation** — input evaluators block harmful requests before the LLM is called; output evaluators flag low-quality responses without adding latency to the happy path.
+- **Concurrent input chain with first-block short-circuit** — all input evaluators race in parallel using `asyncio.wait(FIRST_COMPLETED)`. A detected injection doesn't wait for PII to finish.
+- **PII redact-or-block** — PII can be automatically redacted from the request (allowing it through with sensitive data removed) or hard-blocked. Configurable per deployment.
+- **Shadow mode** — run all evaluators and log scores without ever blocking a request. Use it to tune thresholds in production before enforcing them.
+- **Redis caching** — input evaluator scores are cached by a SHA-256 hash of (input + config version). Repeated inputs cost zero model inference. Cache keys automatically invalidate when you change evaluator config.
+- **Fail-open guarantee** — a model crash, timeout, or OOM error never blocks a legitimate user request. Every evaluator returns `score=None, flag=False` on error.
+- **Human review queue** — flagged responses queue in a dedicated endpoint for analyst review and approval/rejection via the dashboard.
+- **Real-time WebSocket feed** — the dashboard receives every scored request over a WebSocket the moment it is processed.
+- **Eval pipeline with regression detection** — run a golden dataset against a live instance, save the results as a named baseline, and compare future builds against it. CI exits non-zero on regression.
+
 ## Evaluators
 
 Seven evaluators across two layers. Input evaluators run before the LLM call and can block the request. Output evaluators run after and flag responses for human review.
 
 | Evaluator | Layer | Action | Model |
 |-----------|-------|--------|-------|
-| `pii` | input | block or redact | Presidio + spaCy `en_core_web_lg` |
+| `pii` | input | block or redact | Presidio + spaCy `en_core_web_sm` |
 | `prompt_injection` | input | block | `deepset/deberta-v3-base-injection` |
 | `topic_guardrail` | input | block | `all-MiniLM-L6-v2` (cosine sim) |
 | `toxicity` | output | flag | Detoxify |
@@ -31,6 +43,10 @@ Seven evaluators across two layers. Input evaluators run before the LLM call and
 | `faithfulness` | output | flag | `cross-encoder/nli-deberta-v3-base` |
 
 All evaluators are **fail-open** — a model crash or timeout never blocks a legitimate request.
+
+`topic_guardrail` is disabled by default. Enable it and set `allowed_topics` to restrict your assistant to a specific domain (e.g. software engineering, customer support).
+
+`hallucination` and `faithfulness` are silently skipped when no `context_documents` are provided in the request.
 
 ## Quick Start
 
@@ -102,6 +118,10 @@ HTTP/1.1 400 Bad Request
 }
 ```
 
+### PII redaction
+
+When PII action is set to `redact`, sensitive data is stripped from the request text before it reaches the LLM and the response is returned normally. The original text is never forwarded.
+
 ### With API key auth (production)
 
 ```bash
@@ -143,12 +163,28 @@ evaluators:
     enabled: true
     threshold: 0.80
 
+  topic_guardrail:
+    enabled: false            # enable and set allowed_topics to restrict domain
+    threshold: 0.30
+    allowed_topics:
+      - "software engineering"
+      - "programming"
+
   toxicity:
     enabled: true
     threshold: 0.70
 ```
 
 Set `enabled: false` to skip an evaluator entirely (zero latency cost).
+
+### Shadow mode
+
+```yaml
+app:
+  shadow_mode: true   # log all scores but never block any request
+```
+
+Enable shadow mode to observe evaluator behaviour in production without enforcing blocks. Useful for calibrating thresholds before going live.
 
 ### Security settings (env vars)
 
@@ -201,9 +237,11 @@ Input evaluators race with `asyncio.wait(FIRST_COMPLETED)` — a detected inject
 | `GET` | `/metrics` | Prometheus metrics |
 | `GET` | `/v1/sentinel/config` | Active evaluator configuration (no secrets) |
 | `GET` | `/v1/sentinel/scores` | Paginated request history (`?page=1&limit=20`) |
+| `GET` | `/v1/sentinel/scores/{request_id}` | Single request detail with all scores |
 | `GET` | `/v1/sentinel/metrics/aggregate` | Time-bucketed metrics for charts |
 | `GET` | `/v1/sentinel/metrics/summary` | Aggregate stats (block rate, flag rates) |
 | `GET` | `/v1/sentinel/review` | Human review queue (flagged, unreviewed requests) |
+| `PATCH` | `/v1/sentinel/review/{request_id}` | Approve or reject a flagged request |
 | `GET` | `/v1/sentinel/eval` | Eval pipeline run history |
 | `GET` | `/v1/sentinel/eval/{run_id}` | Single eval run detail |
 | `WS` | `/ws/feed` | Real-time event stream for the dashboard |

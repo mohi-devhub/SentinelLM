@@ -286,3 +286,91 @@ def test_faithfulness_class_attributes():
     assert FaithfulnessEvaluator.name == "faithfulness"
     assert FaithfulnessEvaluator.runs_on == "output"
     assert FaithfulnessEvaluator.flag_direction == "below"
+
+
+# ── Inner _score function coverage (no run_in_executor mock) ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_hallucination_inner_score_function_executes(hallucination_evaluator):
+    """Let run_in_executor actually call _score to cover the inner closure.
+
+    The _model.predict mock returns [[0.80, 0.15, 0.05]] for a single doc pair.
+    With _contradiction_idx=0, contradiction score = 0.80.
+    """
+    hallucination_evaluator._model.predict.return_value = [[0.80, 0.15, 0.05]]
+
+    payload = EvalPayload(
+        input_text="What is the capital?",
+        output_text="Berlin is the capital.",
+        context_documents=["Paris is the capital of France."],
+    )
+    result = await hallucination_evaluator.evaluate(payload)
+
+    assert result.error is None
+    assert result.score == pytest.approx(0.80)
+    assert result.metadata is not None
+    assert result.metadata["num_docs"] == 1
+    assert len(result.metadata["per_doc_contradiction"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_hallucination_inner_score_multiple_docs(hallucination_evaluator):
+    """_score iterates over multiple docs and returns the max contradiction."""
+    # Two docs: contradiction scores [0.10, 0.90] → max = 0.90
+    hallucination_evaluator._model.predict.return_value = [
+        [0.10, 0.85, 0.05],  # doc1: contradiction=0.10
+        [0.90, 0.08, 0.02],  # doc2: contradiction=0.90
+    ]
+
+    payload = EvalPayload(
+        input_text="q",
+        output_text="contradicting output",
+        context_documents=["consistent doc", "contradicted doc"],
+    )
+    result = await hallucination_evaluator.evaluate(payload)
+
+    assert result.score == pytest.approx(0.90)
+    assert result.metadata["num_docs"] == 2
+
+
+@pytest.mark.asyncio
+async def test_faithfulness_inner_score_function_executes(faithfulness_evaluator):
+    """Let run_in_executor actually call _score for faithfulness inner closure.
+
+    The _model.predict mock returns [[0.05, 0.92, 0.03]] for a single doc pair.
+    With _entailment_idx=1, entailment score = 0.92.
+    """
+    faithfulness_evaluator._model.predict.return_value = [[0.05, 0.92, 0.03]]
+
+    payload = EvalPayload(
+        input_text="Who founded Apple?",
+        output_text="Apple was founded by Steve Jobs.",
+        context_documents=["Apple Inc. was co-founded by Steve Jobs in 1976."],
+    )
+    result = await faithfulness_evaluator.evaluate(payload)
+
+    assert result.error is None
+    assert result.score == pytest.approx(0.92)
+    assert result.metadata is not None
+    assert result.metadata["num_docs"] == 1
+    assert len(result.metadata["per_doc_entailment"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_faithfulness_inner_score_multiple_docs(faithfulness_evaluator):
+    """_score picks max entailment across multiple docs."""
+    faithfulness_evaluator._model.predict.return_value = [
+        [0.20, 0.15, 0.65],  # doc1: entailment=0.15
+        [0.10, 0.88, 0.02],  # doc2: entailment=0.88
+    ]
+
+    payload = EvalPayload(
+        input_text="q",
+        output_text="supported claim",
+        context_documents=["irrelevant doc", "supporting doc"],
+    )
+    result = await faithfulness_evaluator.evaluate(payload)
+
+    assert result.score == pytest.approx(0.88)
+    assert result.metadata["num_docs"] == 2

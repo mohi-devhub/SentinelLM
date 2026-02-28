@@ -66,7 +66,8 @@ class HallucinationEvaluator(BaseEvaluator):
 
     async def _run_inference(self, payload: EvalPayload) -> tuple[float, dict | None]:
         output = payload.output_text  # guaranteed non-None by BaseEvaluator.evaluate()
-        docs = payload.context_documents  # guaranteed non-None by BaseEvaluator.evaluate()
+        docs = payload.context_documents
+        assert docs is not None  # guaranteed by BaseEvaluator.evaluate()
 
         def _score(out: str, context_docs: list[str]) -> tuple[float, list[float]]:
             # Pairs: (premise=context_doc, hypothesis=LLM_output)

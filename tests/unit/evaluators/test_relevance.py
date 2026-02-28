@@ -165,3 +165,77 @@ async def test_evaluator_name_and_runs_on():
     assert RelevanceEvaluator.name == "relevance"
     assert RelevanceEvaluator.runs_on == "output"
     assert RelevanceEvaluator.flag_direction == "below"
+
+
+# ── Inner _score function coverage (no run_in_executor mock) ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_relevance_inner_score_executes(evaluator):
+    """Let run_in_executor actually call _score to exercise the inner closure.
+
+    We patch sentence_transformers in sys.modules so the deferred import in
+    _score picks up our mock.  The mock cos_sim returns 0.82.
+    """
+    import sys
+
+    mock_cos_tensor = MagicMock()
+    mock_cos_tensor.item.return_value = 0.82
+
+    mock_util = MagicMock()
+    mock_util.cos_sim.return_value = mock_cos_tensor
+
+    mock_st = MagicMock()
+    mock_st.util = mock_util
+
+    original = sys.modules.get("sentence_transformers")
+    sys.modules["sentence_transformers"] = mock_st
+
+    evaluator._model.encode.return_value = [MagicMock(), MagicMock()]
+
+    try:
+        payload = EvalPayload(
+            input_text="What is 2+2?",
+            output_text="The answer is 4.",
+        )
+        result = await evaluator.evaluate(payload)
+        assert result.error is None
+        assert result.score is not None
+        assert result.score >= 0.0
+    finally:
+        if original is None:
+            sys.modules.pop("sentence_transformers", None)
+        else:
+            sys.modules["sentence_transformers"] = original
+
+
+@pytest.mark.asyncio
+async def test_relevance_inner_score_clamps_negative(evaluator):
+    """Negative cosine similarity is clamped to 0.0 in the inner _score function."""
+    import sys
+
+    mock_cos_tensor = MagicMock()
+    mock_cos_tensor.item.return_value = -0.3  # negative → clamped to 0.0
+
+    mock_util = MagicMock()
+    mock_util.cos_sim.return_value = mock_cos_tensor
+
+    mock_st = MagicMock()
+    mock_st.util = mock_util
+
+    original = sys.modules.get("sentence_transformers")
+    sys.modules["sentence_transformers"] = mock_st
+
+    evaluator._model.encode.return_value = [MagicMock(), MagicMock()]
+
+    try:
+        payload = EvalPayload(input_text="irrelevant question", output_text="unrelated answer")
+        result = await evaluator.evaluate(payload)
+        assert result.error is None
+        assert result.score is not None
+        assert result.score == pytest.approx(0.0)  # clamped from -0.3
+    finally:
+        if original is None:
+            sys.modules.pop("sentence_transformers", None)
+        else:
+            sys.modules["sentence_transformers"] = original

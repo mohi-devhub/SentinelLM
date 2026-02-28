@@ -40,4 +40,4 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Return the cached Settings singleton. Call inside functions — never at module level."""
-    return Settings()
+    return Settings()  # type: ignore[call-arg]

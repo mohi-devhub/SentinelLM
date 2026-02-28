@@ -160,6 +160,7 @@ async def _async_eval_run(
         dataset_path=str(dataset),
         baseline_run_id=baseline_run.id if baseline_run else None,
     )
+    assert eval_run_record.id is not None  # always set by insert_eval_run
 
     # ── Run the eval ──────────────────────────────────────────────────────────
     start = time.monotonic()

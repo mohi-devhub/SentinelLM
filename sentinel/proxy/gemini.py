@@ -55,7 +55,7 @@ class GeminiClient(LLMClient):
         response = await asyncio.wait_for(
             self._client.aio.models.generate_content(
                 model=self._model_name,
-                contents=gemini_contents,
+                contents=gemini_contents,  # type: ignore[arg-type]
                 config=cfg,
             ),
             timeout=self._timeout,
