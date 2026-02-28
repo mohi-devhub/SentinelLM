@@ -53,3 +53,6 @@ spacy==3.7.6
 
 # Prompt Injection (no extra install — uses transformers pipeline)
 # Model: deepset/deberta-v3-base-injection (downloaded at first run)
+
+# ── Google Gemini ──────────────────────────────────────────────────────────────
+google-generativeai==0.8.3

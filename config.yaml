@@ -30,6 +30,11 @@ llm_backend:
     timeout_seconds: 60
     # API key: set ANTHROPIC_API_KEY in .env
 
+  gemini:
+    model: gemini-1.5-flash         # gemini-1.5-flash | gemini-1.5-pro | gemini-2.0-flash-exp
+    timeout_seconds: 60
+    # API key: set GEMINI_API_KEY in .env
+
 # ─── Evaluator Chain ─────────────────────────────────────────────────────────
 # Each evaluator has: enabled, threshold, and optionally evaluator-specific fields.
 # threshold: score above which a flag is raised (and request blocked for input evaluators)

@@ -3,7 +3,12 @@ from __future__ import annotations
 from sentinel.proxy.base import LLMClient
 
 
-def get_llm_client(config: dict, openai_api_key: str = "", anthropic_api_key: str = "") -> LLMClient:
+def get_llm_client(
+    config: dict,
+    openai_api_key: str = "",
+    anthropic_api_key: str = "",
+    gemini_api_key: str = "",
+) -> LLMClient:
     """Return the correct LLM client for the configured provider.
 
     Reads llm_backend.provider from config and instantiates the matching
@@ -48,4 +53,17 @@ def get_llm_client(config: dict, openai_api_key: str = "", anthropic_api_key: st
             timeout=float(cfg.get("timeout_seconds", 60)),
         )
 
-    raise ValueError(f"Unknown llm_backend.provider: {provider!r}. Expected ollama, openai, or anthropic.")
+    if provider == "gemini":
+        from sentinel.proxy.gemini import GeminiClient  # noqa: PLC0415
+
+        cfg = backend.get("gemini", {})
+        return GeminiClient(
+            model=cfg.get("model", "gemini-1.5-flash"),
+            api_key=gemini_api_key,
+            timeout=float(cfg.get("timeout_seconds", 60)),
+        )
+
+    raise ValueError(
+        f"Unknown llm_backend.provider: {provider!r}. "
+        "Expected ollama, openai, anthropic, or gemini."
+    )

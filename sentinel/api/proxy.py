@@ -172,7 +172,7 @@ async def chat_completions(
     from sentinel.settings import get_settings  # noqa: PLC0415 — avoid module-level import
 
     settings = get_settings()
-    llm_client = get_llm_client(config, settings.openai_api_key, settings.anthropic_api_key)
+    llm_client = get_llm_client(config, settings.openai_api_key, settings.anthropic_api_key, settings.gemini_api_key)
 
     # Strip context_documents — it is a SentinelLM extension, not an LLM API field
     request_dict = body.model_dump(exclude={"context_documents"}, exclude_none=True)

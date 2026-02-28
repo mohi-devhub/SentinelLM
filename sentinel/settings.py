@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     env: str = "development"
     openai_api_key: str = ""
     anthropic_api_key: str = ""
+    gemini_api_key: str = ""
 
     model_config = {"env_file": ".env", "env_prefix": "SENTINEL_"}
 
