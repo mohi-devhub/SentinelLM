@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from collections.abc import AsyncGenerator
 
 from google import genai
 from google.genai import types
@@ -81,4 +82,70 @@ class GeminiClient(LLMClient):
                 "completion_tokens": usage.candidates_token_count if usage else 0,
                 "total_tokens": usage.total_token_count if usage else 0,
             },
+        }
+
+    async def stream_chat(self, request: dict) -> AsyncGenerator[dict, None]:
+        """Stream tokens from Gemini using the async generate_content_stream API."""
+        messages = request.get("messages", [])
+
+        system_instruction: str | None = None
+        chat_messages = []
+        for msg in messages:
+            if msg["role"] == "system":
+                system_instruction = msg["content"]
+            else:
+                chat_messages.append(msg)
+
+        gemini_contents = [
+            types.Content(
+                role="model" if m["role"] == "assistant" else "user",
+                parts=[types.Part(text=m["content"])],
+            )
+            for m in chat_messages
+        ]
+
+        cfg = types.GenerateContentConfig(
+            system_instruction=system_instruction,
+        )
+        if "temperature" in request:
+            cfg.temperature = request["temperature"]
+        if "max_tokens" in request:
+            cfg.max_output_tokens = request["max_tokens"]
+
+        chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+        created = int(time.time())
+
+        stream = await self._client.aio.models.generate_content_stream(
+            model=self._model_name,
+            contents=gemini_contents,  # type: ignore[arg-type]
+            config=cfg,
+        )
+        async for chunk in stream:
+            text = chunk.text or ""
+            yield {
+                "id": chunk_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": self._model_name,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": text} if text else {},
+                        "finish_reason": None,
+                    }
+                ],
+            }
+
+        yield {
+            "id": chunk_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": self._model_name,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "stop",
+                }
+            ],
         }

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import time
 import uuid
+from collections.abc import AsyncGenerator
 
 import httpx
 
@@ -67,3 +69,52 @@ class OllamaClient(LLMClient):
                 "total_tokens": prompt_tokens + completion_tokens,
             },
         }
+
+    async def stream_chat(self, request: dict) -> AsyncGenerator[dict, None]:
+        """Stream tokens from Ollama using its NDJSON streaming API."""
+        messages = request.get("messages", [])
+        model = request.get("model", self._model)
+
+        ollama_body: dict = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "options": {},
+        }
+        if "temperature" in request:
+            ollama_body["options"]["temperature"] = request["temperature"]
+        if "max_tokens" in request:
+            ollama_body["options"]["num_predict"] = request["max_tokens"]
+
+        chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+        created = int(time.time())
+
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with client.stream(
+                "POST", f"{self._base_url}/api/chat", json=ollama_body
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    content = data.get("message", {}).get("content", "")
+                    done = data.get("done", False)
+
+                    yield {
+                        "id": chunk_id,
+                        "object": "chat.completion.chunk",
+                        "created": created,
+                        "model": data.get("model", model),
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": content} if content else {},
+                                "finish_reason": "stop" if done else None,
+                            }
+                        ],
+                    }

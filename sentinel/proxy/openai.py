@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+
 from openai import AsyncOpenAI
 
 from sentinel.proxy.base import LLMClient
@@ -25,3 +27,15 @@ class OpenAIClient(LLMClient):
         )
 
         return response.model_dump()
+
+    async def stream_chat(self, request: dict) -> AsyncGenerator[dict, None]:
+        """Stream tokens from OpenAI using the SDK's native async streaming."""
+        stream = await self._client.chat.completions.create(
+            model=request.get("model", self._model),
+            messages=request["messages"],
+            temperature=request.get("temperature", 0.7),
+            max_tokens=request.get("max_tokens"),
+            stream=True,
+        )
+        async for chunk in stream:
+            yield chunk.model_dump()

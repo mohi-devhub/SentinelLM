@@ -17,15 +17,23 @@ Note: uses the same model as the hallucination evaluator but scores the
 entailment dimension instead of contradiction. Both evaluators load separate
 model instances.
 
-Device note:
+Device / backend note:
     MPS backend is not fully supported for cross-encoder inference. The device
     setting is respected but 'auto' always resolves to 'cpu' here.
+
+    When use_onnx: true is set in config, the evaluator uses ONNX Runtime
+    instead of PyTorch for ~3–5x faster CPU inference. Falls back to
+    CrossEncoder if ONNX loading fails.
 """
 
 from __future__ import annotations
 
+import logging
+
 from sentinel.evaluators.base import BaseEvaluator, EvalPayload, run_in_executor
 from sentinel.evaluators.output.hallucination import _get_label_index
+
+logger = logging.getLogger(__name__)
 
 
 class FaithfulnessEvaluator(BaseEvaluator):
@@ -40,6 +48,9 @@ class FaithfulnessEvaluator(BaseEvaluator):
         model (str):       HuggingFace cross-encoder model ID.
                            Default 'cross-encoder/nli-deberta-v3-base'.
         device (str):      'auto' | 'cpu'. Default 'auto' (resolves to 'cpu').
+                           Ignored when use_onnx is true (ONNX always runs on CPU).
+        use_onnx (bool):   Use ONNX Runtime for inference (~3–5x faster). Default False.
+                           Requires onnxruntime and optimum to be installed.
     """
 
     name = "faithfulness"
@@ -47,16 +58,31 @@ class FaithfulnessEvaluator(BaseEvaluator):
     flag_direction = "below"
 
     def _load_model(self) -> None:
-        from sentence_transformers.cross_encoder import CrossEncoder  # noqa: PLC0415
-
         model_id: str = self.config.get("model", "cross-encoder/nli-deberta-v3-base")
+        use_onnx: bool = self.config.get("use_onnx", False)
 
-        # MPS is not fully supported for cross-encoder inference; always use CPU.
-        device: str = self.config.get("device", "auto")
-        if device == "auto":
-            device = "cpu"
+        if use_onnx:
+            try:
+                from sentinel.evaluators.output._nli_onnx import (
+                    OnnxNliCrossEncoder,  # noqa: PLC0415
+                )
 
-        self._model = CrossEncoder(model_id, device=device)
+                self._model = OnnxNliCrossEncoder(model_id)
+            except Exception:
+                logger.warning(
+                    "ONNX load failed for %s; falling back to CrossEncoder", model_id, exc_info=True
+                )
+                use_onnx = False
+
+        if not use_onnx:
+            from sentence_transformers.cross_encoder import CrossEncoder  # noqa: PLC0415
+
+            # MPS is not fully supported for cross-encoder inference; always use CPU.
+            device: str = self.config.get("device", "auto")
+            if device == "auto":
+                device = "cpu"
+            self._model = CrossEncoder(model_id, device=device)
+
         self._entailment_idx: int = _get_label_index(self._model, "entailment", fallback=1)
 
     async def _run_inference(self, payload: EvalPayload) -> tuple[float, dict | None]:

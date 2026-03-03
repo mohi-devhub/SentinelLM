@@ -7,6 +7,7 @@ OpenAIClient uses a mocked AsyncOpenAI instance.
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -346,3 +347,260 @@ async def test_gemini_chat_response_structure():
     assert result["model"] == "gemini-2.5-flash-lite"
     assert result["choices"][0]["index"] == 0
     assert result["choices"][0]["finish_reason"] == "stop"
+
+
+# ── stream_chat: base class fallback ─────────────────────────────────────────
+
+
+class _StubLLMClient:
+    """Minimal LLM client that does NOT override stream_chat(), to test the base fallback."""
+
+    def __init__(self, response: dict) -> None:
+        self._response = response
+
+    async def chat(self, request: dict) -> dict:
+        return self._response
+
+    # Inherit stream_chat from LLMClient base via monkey-patch below
+
+
+@pytest.mark.asyncio
+async def test_base_stream_chat_fallback():
+    """Default stream_chat() emits a single chunk wrapping the chat() response."""
+    from sentinel.proxy.base import LLMClient
+
+    fixed_response = {
+        "id": "chatcmpl-abc123",
+        "object": "chat.completion",
+        "created": 1700000000,
+        "model": "test-model",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "Hello world."},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+    # Attach the base stream_chat to our stub (it's not abstract so we can bind it)
+    stub = _StubLLMClient(fixed_response)
+    stub.stream_chat = LLMClient.stream_chat.__get__(stub, type(stub))  # type: ignore[attr-defined]
+
+    chunks = []
+    async for chunk in stub.stream_chat({"messages": [{"role": "user", "content": "Hi"}]}):
+        chunks.append(chunk)
+
+    assert len(chunks) == 1
+    assert chunks[0]["object"] == "chat.completion.chunk"
+    assert chunks[0]["choices"][0]["delta"]["content"] == "Hello world."
+    assert chunks[0]["choices"][0]["finish_reason"] == "stop"
+
+
+# ── OllamaClient.stream_chat ──────────────────────────────────────────────────
+
+
+def _make_ollama_stream_lines(tokens: list[str], model: str = "llama3.2") -> list[str]:
+    """Build NDJSON lines as Ollama would stream them."""
+    lines = []
+    for i, token in enumerate(tokens):
+        done = i == len(tokens) - 1
+        lines.append(
+            json.dumps(
+                {
+                    "model": model,
+                    "message": {"role": "assistant", "content": token},
+                    "done": done,
+                }
+            )
+        )
+    return lines
+
+
+@pytest.mark.asyncio
+async def test_ollama_stream_chat_yields_chunks():
+    """stream_chat() yields one chunk per NDJSON line from Ollama."""
+    client = OllamaClient(base_url="http://ollama:11434", model="llama3.2")
+    tokens = ["Hello", " world", "!"]
+    ndjson_lines = _make_ollama_stream_lines(tokens)
+
+    async def fake_aiter_lines():
+        for line in ndjson_lines:
+            yield line
+
+    mock_streaming_response = MagicMock()
+    mock_streaming_response.raise_for_status = MagicMock()
+    mock_streaming_response.aiter_lines = fake_aiter_lines
+    mock_streaming_response.__aenter__ = AsyncMock(return_value=mock_streaming_response)
+    mock_streaming_response.__aexit__ = AsyncMock(return_value=False)
+
+    mock_client = MagicMock()
+    mock_client.stream.return_value = mock_streaming_response
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("sentinel.proxy.ollama.httpx.AsyncClient", return_value=mock_client):
+        chunks = []
+        async for chunk in client.stream_chat(
+            {"model": "llama3.2", "messages": [{"role": "user", "content": "Hi"}]}
+        ):
+            chunks.append(chunk)
+
+    assert len(chunks) == 3
+    for chunk in chunks:
+        assert chunk["object"] == "chat.completion.chunk"
+        assert chunk["id"].startswith("chatcmpl-")
+
+    # Last chunk has finish_reason=stop
+    assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
+    # Earlier chunks have no finish_reason
+    assert chunks[0]["choices"][0]["finish_reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_ollama_stream_chat_accumulates_content():
+    """Content in each chunk's delta should match the streamed token."""
+    client = OllamaClient(base_url="http://ollama:11434", model="llama3.2")
+    tokens = ["Paris", " is", " great"]
+    ndjson_lines = _make_ollama_stream_lines(tokens)
+
+    async def fake_aiter_lines():
+        for line in ndjson_lines:
+            yield line
+
+    mock_streaming_response = MagicMock()
+    mock_streaming_response.raise_for_status = MagicMock()
+    mock_streaming_response.aiter_lines = fake_aiter_lines
+    mock_streaming_response.__aenter__ = AsyncMock(return_value=mock_streaming_response)
+    mock_streaming_response.__aexit__ = AsyncMock(return_value=False)
+
+    mock_client = MagicMock()
+    mock_client.stream.return_value = mock_streaming_response
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("sentinel.proxy.ollama.httpx.AsyncClient", return_value=mock_client):
+        content_pieces = []
+        async for chunk in client.stream_chat(
+            {"messages": [{"role": "user", "content": "Tell me about Paris"}]}
+        ):
+            delta = chunk["choices"][0]["delta"]
+            if "content" in delta:
+                content_pieces.append(delta["content"])
+
+    assert "".join(content_pieces) == "Paris is great"
+
+
+# ── OpenAIClient.stream_chat ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_openai_stream_chat_yields_chunks():
+    """stream_chat() forwards chunks from the OpenAI async stream as dicts."""
+
+    async def fake_stream():
+        for content in ["Hello", " world"]:
+            chunk = MagicMock()
+            chunk.model_dump.return_value = {
+                "id": "chatcmpl-test",
+                "object": "chat.completion.chunk",
+                "created": 1700000000,
+                "model": "gpt-4o",
+                "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}],
+            }
+            yield chunk
+
+    with patch("sentinel.proxy.openai.AsyncOpenAI") as MockOpenAI:
+        mock_instance = MagicMock()
+        mock_instance.chat.completions.create = AsyncMock(return_value=fake_stream())
+        MockOpenAI.return_value = mock_instance
+
+        from sentinel.proxy.openai import OpenAIClient
+
+        client = OpenAIClient(model="gpt-4o", api_key="test-key")
+        chunks = []
+        async for chunk in client.stream_chat(
+            {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hi"}]}
+        ):
+            chunks.append(chunk)
+
+    assert len(chunks) == 2
+    assert chunks[0]["choices"][0]["delta"]["content"] == "Hello"
+    assert chunks[1]["choices"][0]["delta"]["content"] == " world"
+
+
+# ── AnthropicClient.stream_chat ───────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_anthropic_stream_chat_yields_chunks():
+    """stream_chat() yields one chunk per text token plus a final stop chunk."""
+    pytest.importorskip("anthropic", reason="anthropic SDK not installed")
+
+    async def fake_text_stream():
+        for text in ["Hello", " there"]:
+            yield text
+
+    mock_stream_ctx = MagicMock()
+    mock_stream_ctx.text_stream = fake_text_stream()
+    mock_stream_ctx.__aenter__ = AsyncMock(return_value=mock_stream_ctx)
+    mock_stream_ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("sentinel.proxy.anthropic.AsyncAnthropic") as MockAnthropic:
+        mock_instance = MagicMock()
+        mock_instance.messages.stream.return_value = mock_stream_ctx
+        MockAnthropic.return_value = mock_instance
+
+        from sentinel.proxy.anthropic import AnthropicClient
+
+        client = AnthropicClient(model="claude-opus-4-6", api_key="test-key")
+        chunks = []
+        async for chunk in client.stream_chat(
+            {"model": "claude-opus-4-6", "messages": [{"role": "user", "content": "Hi"}]}
+        ):
+            chunks.append(chunk)
+
+    # 2 content chunks + 1 stop chunk
+    assert len(chunks) == 3
+    assert chunks[0]["choices"][0]["delta"]["content"] == "Hello"
+    assert chunks[1]["choices"][0]["delta"]["content"] == " there"
+    assert chunks[2]["choices"][0]["finish_reason"] == "stop"
+    assert chunks[2]["choices"][0]["delta"] == {}
+
+
+# ── GeminiClient.stream_chat ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_gemini_stream_chat_yields_chunks():
+    """stream_chat() yields one chunk per Gemini response chunk plus a final stop chunk."""
+
+    async def _fake_stream():
+        for text in ["Paris", " is", " beautiful"]:
+            chunk = MagicMock()
+            chunk.text = text
+            yield chunk
+
+    async def fake_generate_stream(*args, **kwargs):
+        return _fake_stream()
+
+    with patch("sentinel.proxy.gemini.genai.Client") as MockClient:
+        mock_instance = MagicMock()
+        mock_instance.aio.models.generate_content_stream = fake_generate_stream
+        MockClient.return_value = mock_instance
+
+        from sentinel.proxy.gemini import GeminiClient
+
+        client = GeminiClient(model="gemini-2.5-flash-lite", api_key="test-key")
+        chunks = []
+        async for chunk in client.stream_chat(
+            {"messages": [{"role": "user", "content": "Tell me about Paris"}]}
+        ):
+            chunks.append(chunk)
+
+    # 3 content chunks + 1 stop chunk
+    assert len(chunks) == 4
+    assert chunks[0]["choices"][0]["delta"]["content"] == "Paris"
+    assert chunks[2]["choices"][0]["delta"]["content"] == " beautiful"
+    assert chunks[3]["choices"][0]["finish_reason"] == "stop"
+    assert chunks[3]["choices"][0]["delta"] == {}

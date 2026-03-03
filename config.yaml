@@ -97,7 +97,9 @@ evaluators:
     enabled: true
     threshold: 0.70             # contradiction score above which output is flagged
     model: "cross-encoder/nli-deberta-v3-base"
-    device: auto
+    device: auto                # ignored when use_onnx: true (ONNX always runs on CPU)
+    use_onnx: false             # set true for ~3-5x faster inference (requires onnxruntime + optimum)
+                                # first run exports model to ONNX and caches it; subsequent starts are fast
     # Only runs when context_documents are present in the request.
     # Silently skipped (score = null) if no context provided.
 
@@ -105,7 +107,8 @@ evaluators:
     enabled: true
     threshold: 0.70             # same NLI model as hallucination; different scoring logic
     model: "cross-encoder/nli-deberta-v3-base"
-    device: auto
+    device: auto                # ignored when use_onnx: true (ONNX always runs on CPU)
+    use_onnx: false             # set true for ~3-5x faster inference (requires onnxruntime + optimum)
     # Only runs when context_documents are present in the request.
 
 # ─── Caching ─────────────────────────────────────────────────────────────────

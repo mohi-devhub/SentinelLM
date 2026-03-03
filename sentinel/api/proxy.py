@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
 import time
 import uuid
+from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, BackgroundTasks, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from sentinel.chain.aggregator import SentinelResult, assemble_result, build_request_record
@@ -43,6 +45,7 @@ class ChatCompletionRequest(BaseModel):
     context_documents: list[str] | None = None
     temperature: float | None = None
     max_tokens: int | None = None
+    stream: bool = False
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -102,7 +105,7 @@ async def chat_completions(
     body: ChatCompletionRequest,
     http_request: Request,
     background_tasks: BackgroundTasks,
-) -> JSONResponse:
+) -> JSONResponse | StreamingResponse:
     total_start = time.monotonic()
 
     config: dict = http_request.app.state.config
@@ -192,8 +195,8 @@ async def chat_completions(
         config, settings.openai_api_key, settings.anthropic_api_key, settings.gemini_api_key
     )
 
-    # Strip context_documents — it is a SentinelLM extension, not an LLM API field
-    request_dict = body.model_dump(exclude={"context_documents"}, exclude_none=True)
+    # Strip context_documents and stream — SentinelLM extensions, not LLM API fields
+    request_dict = body.model_dump(exclude={"context_documents", "stream"}, exclude_none=True)
 
     # Apply PII redaction: substitute sanitised text in the last user message
     if pii_redacted_text:
@@ -203,6 +206,79 @@ async def chat_completions(
                 msgs[i] = {**msgs[i], "content": pii_redacted_text}
                 break
 
+    # ── Streaming path ───────────────────────────────────────────────────────
+    if body.stream:
+
+        async def _stream_response() -> AsyncGenerator[bytes, None]:
+            accumulated_text = ""
+            llm_start_inner = time.monotonic()
+
+            try:
+                async for chunk in llm_client.stream_chat(request_dict):
+                    yield f"data: {json.dumps(chunk)}\n\n".encode()
+                    try:
+                        accumulated_text += chunk["choices"][0]["delta"].get("content", "")
+                    except (KeyError, IndexError):
+                        pass
+            except Exception as exc:
+                logger.error("LLM streaming error: %s", exc)
+                err = json.dumps({"error": {"type": "llm_backend_error", "message": str(exc)}})
+                yield f"data: {err}\n\n".encode()
+                yield b"data: [DONE]\n\n"
+                return
+
+            latency_llm_inner = int((time.monotonic() - llm_start_inner) * 1000)
+
+            payload.output_text = accumulated_text or None
+            output_results = await run_output_chain(
+                payload, http_request.app.state.output_evaluators, timeout
+            )
+
+            latency_total_inner = int((time.monotonic() - total_start) * 1000)
+            sentinel_result = assemble_result(
+                input_results, output_results, latency_llm_inner, latency_total_inner
+            )
+
+            record = build_request_record(
+                sentinel_result=sentinel_result,
+                model=body.model,
+                input_hash=input_hash,
+                input_text=(
+                    input_text if config.get("storage", {}).get("store_input_text", True) else None
+                ),
+                input_redacted=input_text,
+                has_context=has_context,
+            )
+            record.id = request_id
+
+            asyncio.ensure_future(
+                _log_and_broadcast(
+                    http_request.app.state.db_pool, record, request_id, sentinel_result
+                )
+            )
+
+            sentinel_chunk = {
+                "sentinel": {
+                    "request_id": str(request_id),
+                    "scores": sentinel_result.scores,
+                    "flags": sentinel_result.flags,
+                    "latency_ms": sentinel_result.latency_ms,
+                }
+            }
+            yield f"data: {json.dumps(sentinel_chunk)}\n\n".encode()
+            yield b"data: [DONE]\n\n"
+
+        return StreamingResponse(
+            _stream_response(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+
+    # ── Non-streaming path ───────────────────────────────────────────────────
     llm_start = time.monotonic()
     try:
         llm_response = await llm_client.chat(request_dict)

@@ -50,6 +50,10 @@ spacy==3.7.6
 #   en_core_web_lg  (~700 MB) — most accurate (default)
 # Run: python -m spacy download en_core_web_lg
 
+# ONNX Runtime (for optimized CPU inference of NLI models)
+onnxruntime==1.19.2
+optimum==1.22.0                 # HuggingFace → ONNX export; enables use_onnx: true in config
+
 # Prompt Injection (no extra install — uses transformers pipeline)
 # Model: deepset/deberta-v3-base-injection (downloaded at first run)
 

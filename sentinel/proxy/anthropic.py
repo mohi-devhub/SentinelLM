@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import AsyncGenerator
 
 from anthropic import AsyncAnthropic
 
@@ -64,4 +65,59 @@ class AnthropicClient(LLMClient):
                 "completion_tokens": response.usage.output_tokens,
                 "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
             },
+        }
+
+    async def stream_chat(self, request: dict) -> AsyncGenerator[dict, None]:
+        """Stream tokens from Anthropic using the SDK's async streaming context manager."""
+        messages = request.get("messages", [])
+
+        system: str | None = None
+        user_messages = []
+        for msg in messages:
+            if msg["role"] == "system":
+                system = msg["content"]
+            else:
+                user_messages.append(msg)
+
+        kwargs: dict = {
+            "model": request.get("model", self._model),
+            "messages": user_messages,
+            "max_tokens": request.get("max_tokens", 1024),
+        }
+        if system:
+            kwargs["system"] = system
+        if "temperature" in request:
+            kwargs["temperature"] = request["temperature"]
+
+        chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+        created = int(time.time())
+
+        async with self._client.messages.stream(**kwargs) as stream:
+            async for text in stream.text_stream:
+                yield {
+                    "id": chunk_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": self._model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": text},
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+
+        yield {
+            "id": chunk_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": self._model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "stop",
+                }
+            ],
         }
