@@ -62,6 +62,9 @@ openai>=1.50.0               # OpenAI / OpenAI-compatible provider
 anthropic>=0.37.0            # Anthropic Claude provider
 google-genai>=1.0.0          # Google Gemini provider (replaces deprecated google-generativeai)
 
+# ── Statistical analysis (v2 offline eval regression detection) ───────────────
+scipy>=1.14.0               # Mann-Whitney U + Cohen's d; pure-Python fallback when absent
+
 # ── Observability ──────────────────────────────────────────────────────────────
 prometheus-client>=0.21.0    # /metrics Prometheus endpoint
 python-json-logger>=2.0.7    # structured JSON logging for production
