@@ -209,6 +209,65 @@ def print_report(
             console.print("\n[green]✓  No regressions detected.[/green]")
 
 
+def print_statistical_regression_table(
+    console: Console,
+    statistical_regression: dict,
+    baseline_label: str,
+) -> None:
+    """Render a statistical regression table with p-value and Cohen's d columns."""
+    stat_table = Table(
+        title=f"Statistical Regression vs [cyan]{baseline_label}[/cyan]",
+        box=box.SIMPLE_HEAVY,
+        show_header=True,
+        header_style="bold magenta",
+    )
+    stat_table.add_column("Evaluator", style="cyan", no_wrap=True)
+    stat_table.add_column("n (cur/base)", justify="right")
+    stat_table.add_column("p-value", justify="right")
+    stat_table.add_column("Cohen's d", justify="right")
+    stat_table.add_column("Effect", justify="center")
+    stat_table.add_column("Direction", justify="center")
+
+    any_regression = False
+    for ev in EVALUATOR_NAMES:
+        r = statistical_regression.get(ev)
+        if not r:
+            stat_table.add_row(ev, "—", "—", "—", "—", "[dim]no data[/dim]")
+            continue
+
+        n_str = f"{r.get('n_current', 0)}/{r.get('n_baseline', 0)}"
+        p = r.get("p_value", 1.0)
+        d = r.get("cohens_d", 0.0)
+        effect = r.get("effect_size", "negligible")
+        direction = r.get("direction", "stable")
+        significant = r.get("significant", False)
+
+        p_str = f"{p:.4f}" if p < 0.001 else f"{p:.3f}"
+        d_str = f"{d:+.3f}"
+        if significant:
+            p_str = f"[bold]{p_str}[/bold]"
+
+        if direction == "regression":
+            dir_str = "[red]REGRESSION ⚠[/red]"
+            any_regression = True
+        elif direction == "improvement":
+            dir_str = "[green]IMPROVED ✓[/green]"
+        else:
+            dir_str = "[dim]stable[/dim]"
+
+        stat_table.add_row(ev, n_str, p_str, d_str, effect, dir_str)
+
+    console.print(stat_table)
+
+    if any_regression:
+        console.print(
+            "\n[red bold]⚠  Statistical regressions detected "
+            "(p < 0.05, effect ≥ small).[/red bold]"
+        )
+    else:
+        console.print("\n[green]✓  No statistical regressions detected.[/green]")
+
+
 def export_json(
     path: Path,
     label: str,
