@@ -65,6 +65,31 @@ INSERT INTO eval_results
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 """
 
+_INSERT_EVAL_RESULT_WITH_SCORES = """
+INSERT INTO eval_results
+    (id, eval_run_id, request_id, record_index, input_text,
+     expected_output, actual_output, passed, scores_json)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+"""
+
+_COMPLETE_OFFLINE_EVAL_RUN = """
+UPDATE eval_runs
+SET status                       = 'complete',
+    completed_at                 = NOW(),
+    record_count                 = $2,
+    summary_json                 = $3,
+    regression_json              = $4,
+    eval_mode                    = 'offline',
+    statistical_regression_json  = $5
+WHERE id = $1
+"""
+
+_GET_OFFLINE_RUN_SCORES = """
+SELECT scores_json
+FROM eval_results
+WHERE eval_run_id = $1 AND scores_json IS NOT NULL
+"""
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -142,21 +167,40 @@ async def insert_eval_result(
     expected_output: str | None,
     actual_output: str | None,
     passed: bool,
+    scores_json: dict | None = None,
 ) -> None:
-    """Persist a single eval result row."""
+    """Persist a single eval result row.
+
+    Pass scores_json for offline runs where request_id is None, so that
+    per-record scores are stored for later statistical comparison.
+    """
     result_id = _uuid.uuid4()
     async with pool.acquire() as conn:
-        await conn.execute(
-            _INSERT_EVAL_RESULT,
-            result_id,
-            eval_run_id,
-            request_id,
-            record_index,
-            input_text,
-            expected_output,
-            actual_output,
-            passed,
-        )
+        if scores_json is not None:
+            await conn.execute(
+                _INSERT_EVAL_RESULT_WITH_SCORES,
+                result_id,
+                eval_run_id,
+                request_id,
+                record_index,
+                input_text,
+                expected_output,
+                actual_output,
+                passed,
+                json.dumps(scores_json),
+            )
+        else:
+            await conn.execute(
+                _INSERT_EVAL_RESULT,
+                result_id,
+                eval_run_id,
+                request_id,
+                record_index,
+                input_text,
+                expected_output,
+                actual_output,
+                passed,
+            )
 
 
 async def list_eval_runs(pool: asyncpg.Pool) -> list[EvalRunRecord]:
@@ -178,3 +222,48 @@ async def get_eval_run_by_id(pool: asyncpg.Pool, run_id: UUID) -> EvalRunRecord 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(_GET_EVAL_RUN_BY_ID, run_id)
     return _row_to_eval_run(row) if row else None
+
+
+async def complete_offline_eval_run(
+    pool: asyncpg.Pool,
+    run_id: UUID,
+    record_count: int,
+    summary: dict,
+    regression: dict | None,
+    statistical_regression: dict | None,
+) -> None:
+    """Mark an offline eval run as complete, storing statistical regression data."""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            _COMPLETE_OFFLINE_EVAL_RUN,
+            run_id,
+            record_count,
+            json.dumps(summary),
+            json.dumps(regression) if regression else None,
+            json.dumps(statistical_regression) if statistical_regression else None,
+        )
+
+
+async def get_offline_run_scores(
+    pool: asyncpg.Pool, run_id: UUID
+) -> dict[str, list[float]]:
+    """Fetch per-evaluator score lists for an offline eval run.
+
+    Returns a dict of evaluator_name → list[float] (non-None scores only).
+    Used to fetch baseline scores for statistical regression comparison.
+    """
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(_GET_OFFLINE_RUN_SCORES, run_id)
+
+    scores_by_ev: dict[str, list[float]] = {}
+    for row in rows:
+        scores_json = row["scores_json"]
+        if isinstance(scores_json, str):
+            scores_json = json.loads(scores_json)
+        if not isinstance(scores_json, dict):
+            continue
+        for ev_name, score in scores_json.items():
+            if score is not None:
+                scores_by_ev.setdefault(ev_name, []).append(float(score))
+
+    return scores_by_ev
