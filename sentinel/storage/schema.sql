@@ -156,7 +156,14 @@ CREATE INDEX IF NOT EXISTS idx_eval_results_failed
 -- Convenience view used by the dashboard review queue and feed.
 -- ─────────────────────────────────────────────────────────────────────────────
 
-CREATE OR REPLACE VIEW flagged_requests AS
+-- DROP + CREATE, not CREATE OR REPLACE: this file runs on every startup and
+-- migrations may have widened this view's column list since (see
+-- v004_exfiltration.sql) — Postgres's CREATE OR REPLACE VIEW cannot add or
+-- remove columns, so it would fail on the second startup after any such
+-- migration ran. A later migration widening the view again right after this
+-- runs is expected and harmless; this only needs to not crash.
+DROP VIEW IF EXISTS flagged_requests;
+CREATE VIEW flagged_requests AS
 SELECT
     id,
     created_at,

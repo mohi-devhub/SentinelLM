@@ -45,8 +45,13 @@ class AnthropicClient(LLMClient):
 
         response = await self._client.messages.create(**kwargs)
 
-        # Normalise Anthropic response → OpenAI format
-        content = response.content[0].text if response.content else ""
+        # Normalise Anthropic response → OpenAI format.
+        # response.content[0] is not always the reply: with extended thinking
+        # enabled, content[0] is a ThinkingBlock (fields: thinking, signature —
+        # no .text at all) and the actual reply is a later TextBlock. Filter
+        # by block.type instead of assuming position; join in case of
+        # multiple text blocks (e.g. interleaved with tool use).
+        content = "".join(block.text for block in response.content if block.type == "text")
 
         return {
             "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",

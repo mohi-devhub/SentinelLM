@@ -529,6 +529,120 @@ async def test_openai_stream_chat_yields_chunks():
     assert chunks[1]["choices"][0]["delta"]["content"] == " world"
 
 
+# ── AnthropicClient.chat ─────────────────────────────────────────────────────
+
+
+def _make_anthropic_content_block(type_: str, **fields) -> MagicMock:
+    """Fake an Anthropic SDK content block (TextBlock/ThinkingBlock/etc).
+
+    A plain MagicMock(spec=...) would satisfy isinstance checks we don't use
+    here — .type is checked as a plain attribute, so a MagicMock with .type
+    set and no .text attribute (for a thinking block) accurately reproduces
+    the real crash if the code under test assumes .text exists.
+    """
+    block = MagicMock(spec=list(fields.keys()) + ["type"])
+    block.type = type_
+    for k, v in fields.items():
+        setattr(block, k, v)
+    return block
+
+
+def _make_anthropic_response(content: list, model: str = "claude-opus-5") -> MagicMock:
+    resp = MagicMock()
+    resp.content = content
+    resp.model = model
+    resp.usage = MagicMock(input_tokens=10, output_tokens=5)
+    return resp
+
+
+def _make_anthropic_client():
+    pytest.importorskip("anthropic", reason="anthropic SDK not installed")
+    with patch("sentinel.proxy.anthropic.AsyncAnthropic"):
+        from sentinel.proxy.anthropic import AnthropicClient
+
+        return AnthropicClient(model="claude-sonnet-5", api_key="test-key")
+
+
+@pytest.mark.asyncio
+async def test_anthropic_chat_extracts_text_from_plain_response():
+    """The common case: content is a single TextBlock."""
+    client = _make_anthropic_client()
+    client._client.messages.create = AsyncMock(
+        return_value=_make_anthropic_response(
+            [_make_anthropic_content_block("text", text="Paris is the capital of France.")]
+        )
+    )
+
+    result = await client.chat({"model": "claude-sonnet-5", "messages": []})
+
+    assert result["choices"][0]["message"]["content"] == "Paris is the capital of France."
+
+
+@pytest.mark.asyncio
+async def test_anthropic_chat_skips_leading_thinking_block():
+    """Regression: extended-thinking models put a ThinkingBlock (no .text
+    attribute at all) at content[0], with the real reply as a later TextBlock.
+    content[0].text used to crash with AttributeError on these responses.
+    """
+    client = _make_anthropic_client()
+    client._client.messages.create = AsyncMock(
+        return_value=_make_anthropic_response(
+            [
+                _make_anthropic_content_block(
+                    "thinking", thinking="Let me consider this...", signature="sig"
+                ),
+                _make_anthropic_content_block("text", text="The answer is 42."),
+            ]
+        )
+    )
+
+    result = await client.chat({"model": "claude-opus-5", "messages": []})
+
+    assert result["choices"][0]["message"]["content"] == "The answer is 42."
+
+
+@pytest.mark.asyncio
+async def test_anthropic_chat_joins_multiple_text_blocks():
+    client = _make_anthropic_client()
+    client._client.messages.create = AsyncMock(
+        return_value=_make_anthropic_response(
+            [
+                _make_anthropic_content_block("text", text="Part one. "),
+                _make_anthropic_content_block("text", text="Part two."),
+            ]
+        )
+    )
+
+    result = await client.chat({"model": "claude-sonnet-5", "messages": []})
+
+    assert result["choices"][0]["message"]["content"] == "Part one. Part two."
+
+
+@pytest.mark.asyncio
+async def test_anthropic_chat_empty_content_returns_empty_string():
+    client = _make_anthropic_client()
+    client._client.messages.create = AsyncMock(return_value=_make_anthropic_response([]))
+
+    result = await client.chat({"model": "claude-sonnet-5", "messages": []})
+
+    assert result["choices"][0]["message"]["content"] == ""
+
+
+@pytest.mark.asyncio
+async def test_anthropic_chat_thinking_only_response_returns_empty_string():
+    """No TextBlock at all (unusual, but must not crash) — empty content, not an error."""
+    client = _make_anthropic_client()
+    client._client.messages.create = AsyncMock(
+        return_value=_make_anthropic_response(
+            [_make_anthropic_content_block("thinking", thinking="...", signature="sig")]
+        )
+    )
+
+    result = await client.chat({"model": "claude-opus-5", "messages": []})
+
+    assert result["choices"][0]["message"]["content"] == ""
+
+
 # ── AnthropicClient.stream_chat ───────────────────────────────────────────────
 
 
