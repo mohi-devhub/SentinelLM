@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,10 @@ if TYPE_CHECKING:
     from sentinel.evaluators.base import BaseEvaluator
 
 logger = logging.getLogger(__name__)
+
+# Serializes model instantiation across evaluator-loading threads — see the
+# comment at its use site in load_evaluators() for why this is necessary.
+_load_lock = threading.Lock()
 
 # Maps config.yaml evaluator keys to their implementation classes.
 # Order determines the order evaluators are instantiated and run within each layer.
@@ -76,7 +81,20 @@ def load_evaluators(config: dict) -> list[BaseEvaluator]:
 
     def _load(name: str, cls: type[BaseEvaluator]) -> tuple[str, BaseEvaluator]:
         logger.info("loading evaluator: %s", name)
-        return name, cls(config)
+        # Model instantiation (from_pretrained/.to(device)/etc.) is not safe
+        # to run concurrently across threads: PyTorch/transformers' meta-
+        # device init path uses state that isn't fully thread-isolated, so
+        # two evaluators loading models on different threads at the same
+        # time can corrupt each other — sometimes as a hard crash (meta
+        # tensor copy error), sometimes silently (a model that "loads" but
+        # produces NaN/garbage predictions with no exception, ever).
+        # Confirmed empirically: this raced across three different model
+        # types (CrossEncoder, AutoModelForSequenceClassification,
+        # SentenceTransformer) regardless of per-call kwargs. Serializing
+        # just this step keeps evaluators loading in parallel everywhere
+        # else (imports, config parsing) while eliminating the race.
+        with _load_lock:
+            return name, cls(config)
 
     with ThreadPoolExecutor(max_workers=len(enabled)) as pool:
         futures = {pool.submit(_load, name, cls): name for name, cls in enabled}
