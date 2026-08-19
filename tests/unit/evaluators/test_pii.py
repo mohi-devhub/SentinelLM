@@ -125,15 +125,16 @@ def test_evaluator_class_attributes():
 
 
 def test_defaults_to_docker_installed_spacy_model():
-    """With no spacy_model configured, the NLP engine must target en_core_web_sm —
-    the model actually installed by docker/Dockerfile.api — not Presidio's own
-    default of en_core_web_lg."""
+    """With no spacy_model configured, the NLP engine must target en_core_web_lg —
+    the model actually installed by docker/Dockerfile.api. Explicitly pinned
+    rather than relying on Presidio's own matching default, so a deployment
+    that configures a smaller model doesn't silently load the wrong one."""
     ev = _make_evaluator(MOCK_CONFIG, [])
 
     ev._nlp_engine_provider_cls.assert_called_once_with(
         nlp_configuration={
             "nlp_engine_name": "spacy",
-            "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],
+            "models": [{"lang_code": "en", "model_name": "en_core_web_lg"}],
         }
     )
 
@@ -232,6 +233,49 @@ async def test_redact_action_includes_redacted_text():
     assert result.metadata is not None
     assert result.metadata["action"] == "redact"
     assert result.metadata["redacted_text"] == "<PERSON> visited Paris."
+
+
+# ── Tests: sensitive-entity-type whitelist ──────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_non_sensitive_entity_types_are_excluded_regardless_of_score():
+    """LOCATION and DATE_TIME are excluded even at a high confidence score.
+
+    Both were measured directly against Presidio to score as confidently as
+    genuine PII (DATE_TIME on ordinary phrases like "year-over-year" scores
+    the same 0.85 as a real PERSON match) — the whitelist exists precisely
+    because no threshold can separate them from real detections.
+    """
+    entities = [
+        FakeRecognizerResult("LOCATION", 0.99, 0, 5),
+        FakeRecognizerResult("DATE_TIME", 0.85, 10, 24),
+    ]
+    ev = _make_evaluator(MOCK_CONFIG, entities)
+
+    payload = EvalPayload(input_text="Paris grew year-over-year")
+    result = await ev.evaluate(payload)
+
+    assert result.score == 0.0
+    assert result.metadata is not None
+    assert result.metadata["entities"] == []
+
+
+@pytest.mark.asyncio
+async def test_sensitive_entity_type_still_detected_alongside_excluded_ones():
+    """A genuinely sensitive entity is still caught even mixed with excluded types."""
+    entities = [
+        FakeRecognizerResult("DATE_TIME", 0.85, 0, 14),
+        FakeRecognizerResult("PERSON", 0.85, 20, 30),
+    ]
+    ev = _make_evaluator(MOCK_CONFIG, entities)
+
+    payload = EvalPayload(input_text="year-over-year, John Smith")
+    result = await ev.evaluate(payload)
+
+    assert result.score == pytest.approx(0.85)
+    assert result.metadata is not None
+    assert [e["type"] for e in result.metadata["entities"]] == ["PERSON"]
 
 
 # ── Tests: threshold filtering ────────────────────────────────────────────────

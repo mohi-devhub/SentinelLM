@@ -27,8 +27,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Download spaCy NER model for PII detection (pinned to match spaCy 3.7.x).
 # Using direct whl URL avoids `spacy download` relying on PyPI API lookups,
 # which can fail in restricted Docker build environments.
+# en_core_web_lg, not _sm: measured directly against Presidio, the smaller
+# model misreads ordinary capitalized words (product names, section labels)
+# as PERSON entities — see sentinel/evaluators/input/pii.py. ~700MB, adds to
+# build time and image size, but the false-positive rate made _sm unusable.
 RUN pip install --no-cache-dir \
-    "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl"
+    "https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.7.1/en_core_web_lg-3.7.1-py3-none-any.whl"
 
 # Copy application source and fix ownership
 COPY --chown=sentinel:sentinel . .

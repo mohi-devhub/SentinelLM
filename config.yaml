@@ -51,11 +51,15 @@ evaluators:
     action: redact              # redact | block
                                 # redact: remove PII and pass request through
                                 # block: reject the request with 400
-    spacy_model: en_core_web_sm # en_core_web_sm | en_core_web_md | en_core_web_lg
+    spacy_model: en_core_web_lg # en_core_web_sm | en_core_web_md | en_core_web_lg
                                 # Must match a model installed in the runtime image —
-                                # docker/Dockerfile.api installs en_core_web_sm (12 MB).
-                                # Switch to _lg (700 MB, higher recall) only if the
-                                # Dockerfile is updated to install it too.
+                                # docker/Dockerfile.api installs en_core_web_lg (700 MB).
+                                # Measured directly: en_core_web_sm's smaller NER model
+                                # misreads ordinary capitalized words as PERSON (e.g.
+                                # "Nimbus" as a product name, "Untrusted" as a section
+                                # label) — en_core_web_lg cleanly fixes both while still
+                                # catching real names. Switch back to _sm (12 MB) only
+                                # if the smaller image size matters more than that.
 
   prompt_injection:
     enabled: true

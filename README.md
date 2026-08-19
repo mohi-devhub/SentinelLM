@@ -34,7 +34,7 @@ Seven evaluators across two layers. Input evaluators run before the LLM call and
 
 | Evaluator | Layer | Action | Model |
 |-----------|-------|--------|-------|
-| `pii` | input | block or redact | Presidio + spaCy `en_core_web_sm` |
+| `pii` | input | block or redact | Presidio + spaCy `en_core_web_lg`² |
 | `prompt_injection` | input | block | `deepset/deberta-v3-base-injection` |
 | `topic_guardrail` | input | block | `all-MiniLM-L6-v2` (cosine sim) |
 | `toxicity` | output | flag | Detoxify |
@@ -43,6 +43,8 @@ Seven evaluators across two layers. Input evaluators run before the LLM call and
 | `faithfulness` | output | flag | `vectara/hallucination_evaluation_model`¹ |
 
 ¹ Purpose-built factual-consistency model, measured **AUC 0.78** vs **0.59** for the generic NLI classifier it replaced — see [Evaluator Accuracy](#evaluator-accuracy). Runs via `trust_remote_code=True` (executes vendor code from the model repo); set `backend: nli` in `config.yaml` to use the original `cross-encoder/nli-deberta-v3-base` path instead if that's not acceptable in your environment.
+
+² Measured directly against Presidio: the smaller `en_core_web_sm` model misreads ordinary capitalized words as `PERSON` (a product name, a section label like "Untrusted") at the same confidence as a genuine name match — no threshold separates them. `en_core_web_lg` fixes both while still catching real names; costs ~700MB vs ~12MB in the image. `DATE_TIME` is excluded from PII's sensitive-entity list for the same reason (see `sentinel/evaluators/input/pii.py`) — plain business phrases like "year-over-year" scored as confidently as real detections.
 
 All evaluators are **fail-open** — a model crash or timeout never blocks a legitimate request.
 

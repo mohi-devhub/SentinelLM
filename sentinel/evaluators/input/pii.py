@@ -9,13 +9,15 @@ Score = max Presidio confidence across all entities that meet the threshold.
 A score of 0.0 means no PII was detected above the confidence threshold.
 
 spaCy model must be downloaded before first use, matching evaluators.pii.spacy_model
-in config.yaml (default en_core_web_sm — the model docker/Dockerfile.api installs):
-    python -m spacy download en_core_web_sm
+in config.yaml (default en_core_web_lg — the model docker/Dockerfile.api installs):
+    python -m spacy download en_core_web_lg
 
 Presidio's AnalyzerEngine() defaults to en_core_web_lg when built with no explicit
-NlpEngineProvider — that default does NOT match the model shipped in the Docker
-image, so this evaluator always builds an explicit NlpEngineProvider pinned to
-the configured spacy_model instead of relying on Presidio's default.
+NlpEngineProvider, which happens to match the current default here — but this
+evaluator always builds an explicit NlpEngineProvider pinned to the configured
+spacy_model rather than relying on that coincidence, so a deployment that
+switches to a smaller model (spacy_model: en_core_web_sm) stays correct instead
+of silently loading the wrong one.
 """
 
 from __future__ import annotations
@@ -41,6 +43,14 @@ class PIIEvaluator(BaseEvaluator):
     # Entity types considered genuinely sensitive PII.
     # Excludes LOCATION (country/city names are not private) and other
     # non-sensitive NER categories that Presidio detects by default.
+    #
+    # Also excludes DATE_TIME: measured directly against Presidio's own
+    # recognizer, ordinary business phrases like "year-over-year" score 0.85 —
+    # the same confidence tier as a genuine PERSON match ("My name is John
+    # Smith." also scores 0.85) — so no threshold can separate the false
+    # positives from real detections. A bare date, unlike a name or SSN, is
+    # also weak PII on its own; if it's attached to something actually
+    # sensitive (e.g. a name), that other entity type still catches it.
     _SENSITIVE_ENTITY_TYPES: frozenset[str] = frozenset(
         {
             "PERSON",
@@ -54,7 +64,6 @@ class PIIEvaluator(BaseEvaluator):
             "IP_ADDRESS",
             "IBAN_CODE",
             "MEDICAL_LICENSE",
-            "DATE_TIME",
             "NRP",
             "URL",
         }
@@ -65,7 +74,7 @@ class PIIEvaluator(BaseEvaluator):
         from presidio_analyzer.nlp_engine import NlpEngineProvider  # noqa: PLC0415
         from presidio_anonymizer import AnonymizerEngine  # noqa: PLC0415
 
-        spacy_model: str = self.config.get("spacy_model", "en_core_web_sm")
+        spacy_model: str = self.config.get("spacy_model", "en_core_web_lg")
         nlp_configuration = {
             "nlp_engine_name": "spacy",
             "models": [{"lang_code": "en", "model_name": spacy_model}],
