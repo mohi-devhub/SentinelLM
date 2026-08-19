@@ -177,6 +177,8 @@ evaluators:
 
 Set `enabled: false` to skip an evaluator entirely (zero latency cost).
 
+> **Known limitation — `prompt_injection` threshold.** Load testing against real traffic found this evaluator has a sharp, length-correlated false-positive pattern: a short benign message passes cleanly, and the same message extended by a sentence or two can jump to a near-certain block on content that isn't an attack at all. The default `0.80` threshold has not been tuned against this behavior. See [Real-Trace Load Testing](#real-trace-load-testing) for the reproducible evidence before relying on this evaluator's default threshold in production.
+
 ### Shadow mode
 
 ```yaml
@@ -365,6 +367,25 @@ locust -f locustfile.py --host http://localhost:8000
 ```
 
 Four user classes simulate realistic production traffic: clean chat (80%), prompt injection attacks (10%), PII leaks (10%), and a mixed realistic profile.
+
+### Real-Trace Load Testing
+
+Locust's synthetic load is useful, but it doesn't tell you how the system behaves under *real* production traffic shape — genuine bursts and idle gaps, not a uniform arrival rate. To get that signal, SentinelLM was tested by replaying Microsoft's public [Azure LLM Inference Trace](https://github.com/Azure/AzurePublicDataset) (real Azure OpenAI conversational traffic, captured Nov 2023) against a live instance backed by the real Anthropic API — 500 real LLM calls, at the trace's actual recorded inter-arrival timing, not mocked.
+
+**What it confirmed:**
+- **Zero crashes, zero 5xx errors** across both runs (500 total requests), including a sustained burst well above the configured rate limit.
+- **The rate limiter works as designed under real overload**: at the shipped `60 requests/minute` default, 119/250 requests passed and 131/250 were cleanly rejected with `429` during a burst that exceeds that rate — no errors, no hangs, no silent drops.
+- **With the rate limiter disabled**, all 250 requests succeeded — the pipeline itself doesn't fall over under this trace's real burst pattern.
+- **Guardrail overhead is negligible at real concurrency**: `pii`, `prompt_injection`, `toxicity`, and `relevance` combined averaged ~70ms per request, against multi-second end-to-end latency dominated entirely by the LLM call itself (~98% of total response time).
+
+| | Run 1 — as configured (60 req/min) | Run 2 — rate limit disabled |
+|---|---|---|
+| Outcome | 119 passed · 131 rate-limited (429) | 250 passed · 0 errors |
+| Total latency p50 / p95 / p99 | 2,976ms / 9,705ms / 13,517ms | 4,065ms / 9,471ms / 9,903ms |
+
+**A concrete finding, not a hypothetical one**: building realistic test prompts for this run surfaced a real false-positive pattern in the `prompt_injection` evaluator. Holding topic and style constant and only changing length, a 15-word benign business message scored `0.0009` (passes cleanly), and the same message extended by one more clause to ~30 words scored `0.991` — blocked, on content that is not an attack. Two related patterns were isolated the same way: **exact sentence repetition** scores ~`0.96` regardless of content (plausibly intentional — repetition is a real jailbreak technique — but a false-positive risk on any naturally repetitive legitimate text), and **imperative "Write a \[thing\]..." phrasing** scores ~`0.996` even for entirely benign requests, which is concerning specifically because that phrasing is the core use case for any AI copywriting or support-drafting product. See the [Configuration](#evaluator-thresholds) note above — the default `0.80` threshold has not been recalibrated against this behavior, and these three reproducible examples are a ready-made starting test set for whoever does that work.
+
+**Scope of what this proved, honestly**: single replica on one machine (no horizontal-scaling or multi-replica WS-fanout test yet); `hallucination`/`faithfulness` were disabled for this run (an unrelated local torch/transformers version mismatch on the test machine, not a SentinelLM bug); input text was deliberately kept short to stay clear of the false-positive cliff above, so these latency numbers reflect clean pass-through behavior rather than the trace's much larger real-world context sizes; 250 of the trace's 19,366 rows were replayed, from the start of the file; every request resolved to the same single tenant; and the whole run lasted 72 seconds, not long enough to surface slow leaks or connection-pool exhaustion.
 
 ## License
 
