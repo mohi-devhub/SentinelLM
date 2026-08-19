@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 import logging.config
 import time
@@ -93,15 +95,70 @@ def create_app(config_path: str | None = None) -> FastAPI:
         app.state.db_pool = await create_pool(settings.database_url)
         logger.info("database pool connected")
 
+        # Apply schema.sql + migrations/*.sql — idempotent, safe on every startup.
+        from sentinel.storage.migrate import run_migrations  # noqa: PLC0415
+
+        await run_migrations(app.state.db_pool)
+        logger.info("database schema up to date")
+
+        # Resolve the default tenant and attach the legacy SENTINEL_API_KEY to
+        # it (if configured), so existing single-tenant deployments keep
+        # working unchanged. See sentinel/tenancy/bootstrap.py.
+        from sentinel.tenancy.bootstrap import bootstrap_tenancy  # noqa: PLC0415
+
+        app.state.default_tenant = await bootstrap_tenancy(app.state.db_pool, settings.api_key)
+        logger.info(
+            "tenancy bootstrapped; default tenant=%s", app.state.default_tenant["tenant_slug"]
+        )
+
         # Redis async client
         app.state.redis = aioredis.from_url(settings.redis_url)
         logger.info("redis connected")
 
+        # WebSocket cross-replica fanout — one listener per replica, relaying
+        # every published event to this replica's own dashboard connections.
+        # See sentinel/ws/broadcaster.py.
+        from sentinel.ws.broadcaster import run_pubsub_listener  # noqa: PLC0415
+
+        app.state.ws_pubsub_task = asyncio.create_task(run_pubsub_listener(app.state.redis))
+        logger.info("websocket pubsub listener started")
+
+        # Webhook alerting — zero extra infra required. No-op POST (loop still
+        # runs, just skips sending) when SENTINEL_ALERT_WEBHOOK_URL is unset.
+        alert_config = config.get("observability", {}).get("alerting", {})
+        if alert_config.get("enabled", True):
+            from sentinel.observability.alerting import run_alert_loop  # noqa: PLC0415
+
+            app.state.alert_task = asyncio.create_task(
+                run_alert_loop(
+                    settings.alert_webhook_url,
+                    alert_config.get("thresholds", {}),
+                    float(alert_config.get("check_interval_seconds", 60)),
+                )
+            )
+            logger.info(
+                "alert loop started (webhook %s)",
+                "configured" if settings.alert_webhook_url else "not configured",
+            )
+        else:
+            app.state.alert_task = None
+
         yield
 
         # ── Shutdown ─────────────────────────────────────────────────────────
+        app.state.ws_pubsub_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await app.state.ws_pubsub_task
+        if app.state.alert_task is not None:
+            app.state.alert_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await app.state.alert_task
         await app.state.db_pool.close()
         await app.state.redis.aclose()
+
+        from sentinel.observability.tracing import shutdown_tracing  # noqa: PLC0415
+
+        shutdown_tracing()
         logger.info("SentinelLM shutdown complete")
 
     from sentinel.settings import get_settings  # noqa: PLC0415
@@ -113,6 +170,16 @@ def create_app(config_path: str | None = None) -> FastAPI:
         version="1.0.0",
         description="LLM Guardrails & Evaluation Middleware",
         lifespan=lifespan,
+    )
+
+    # ── Tracing — no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set ─────────────
+    from sentinel.observability.tracing import configure_tracing  # noqa: PLC0415
+
+    configure_tracing(
+        app,
+        settings.otel_exporter_endpoint,
+        settings.otel_exporter_headers,
+        settings.otel_service_name,
     )
 
     # ── Prometheus metrics sub-application ───────────────────────────────────
