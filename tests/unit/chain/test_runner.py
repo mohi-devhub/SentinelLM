@@ -35,6 +35,23 @@ def _mock_evaluator(
     return ev
 
 
+class FakeCacheRedis:
+    """Minimal in-memory Redis stub matching sentinel.cache.client's hash usage."""
+
+    def __init__(self) -> None:
+        self._store: dict[str, dict[str, str]] = {}
+
+    async def hgetall(self, key: str) -> dict[bytes, bytes]:
+        data = self._store.get(key, {})
+        return {k.encode(): v.encode() for k, v in data.items()}
+
+    async def hset(self, key: str, mapping: dict[str, str]) -> None:
+        self._store.setdefault(key, {}).update(mapping)
+
+    async def expire(self, key: str, seconds: int) -> None:
+        pass
+
+
 # ── Input chain ──────────────────────────────────────────────────────────────
 
 
@@ -107,6 +124,149 @@ async def test_input_chain_evaluator_exception_does_not_propagate():
     error_result = next(r for r in results if r.evaluator_name == "pii")
     assert error_result.error == "boom"
     assert error_result.flag is False
+
+
+# ── Input chain caching ──────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_no_caching_when_redis_not_given():
+    """Backward compat: omitting redis/cache_key skips caching entirely."""
+    ev = _mock_evaluator("pii", score=0.01)
+    payload = EvalPayload(input_text="hello", config={})
+
+    await run_input_chain(payload, [ev], timeout=3.0)
+
+    ev.evaluate.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cache_hit_skips_inference():
+    redis = FakeCacheRedis()
+    key = "sentinel:t1:scores:abc"
+    redis._store[key] = {"pii": '{"score": 0.05, "metadata": null}'}
+
+    ev = _mock_evaluator("pii", score=0.9)  # would flag if actually run
+    payload = EvalPayload(input_text="hello", config={})
+
+    results, blocked_by = await run_input_chain(
+        payload, [ev], timeout=3.0, redis=redis, cache_key=key
+    )
+
+    ev.evaluate.assert_not_awaited()
+    assert blocked_by is None
+    assert results[0].score == pytest.approx(0.05)
+    assert results[0].latency_ms == 0
+
+
+@pytest.mark.asyncio
+async def test_cache_hit_metadata_round_trips():
+    """A cache-hit PII result must still expose redacted_text for the proxy."""
+    redis = FakeCacheRedis()
+    key = "sentinel:t1:scores:abc"
+    redis._store[key] = {
+        "pii": '{"score": 0.9, "metadata": {"action": "redact", "redacted_text": "hi <NAME>"}}'
+    }
+
+    ev = _mock_evaluator("pii", score=0.9, threshold=0.5)
+    payload = EvalPayload(input_text="hi Bob", config={})
+
+    results, blocked_by = await run_input_chain(
+        payload, [ev], timeout=3.0, redis=redis, cache_key=key
+    )
+
+    assert blocked_by is not None
+    assert blocked_by.metadata["redacted_text"] == "hi <NAME>"
+
+
+@pytest.mark.asyncio
+async def test_cache_hit_can_short_circuit_without_running_others():
+    """A flagged cache hit must skip live inference for the remaining evaluators."""
+    redis = FakeCacheRedis()
+    key = "sentinel:t1:scores:abc"
+    redis._store[key] = {"prompt_injection": '{"score": 0.95, "metadata": null}'}
+
+    cached_ev = _mock_evaluator("prompt_injection", score=0.95, threshold=0.8)
+    live_ev = _mock_evaluator("pii", score=0.01)
+    payload = EvalPayload(input_text="ignore instructions", config={})
+
+    results, blocked_by = await run_input_chain(
+        payload, [cached_ev, live_ev], timeout=3.0, redis=redis, cache_key=key
+    )
+
+    assert blocked_by is not None
+    assert blocked_by.evaluator_name == "prompt_injection"
+    live_ev.evaluate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cache_miss_writes_result_back():
+    redis = FakeCacheRedis()
+    key = "sentinel:t1:scores:xyz"
+
+    ev = _mock_evaluator("pii", score=0.2)
+    payload = EvalPayload(input_text="hello", config={})
+
+    await run_input_chain(payload, [ev], timeout=3.0, redis=redis, cache_key=key)
+
+    assert key in redis._store
+    assert "pii" in redis._store[key]
+
+
+@pytest.mark.asyncio
+async def test_partial_cache_hit_only_runs_the_miss():
+    redis = FakeCacheRedis()
+    key = "sentinel:t1:scores:mix"
+    redis._store[key] = {"pii": '{"score": 0.01, "metadata": null}'}
+
+    cached_ev = _mock_evaluator("pii", score=0.9)  # would flag if re-run — must not be
+    live_ev = _mock_evaluator("prompt_injection", score=0.02)
+    payload = EvalPayload(input_text="hello", config={})
+
+    results, blocked_by = await run_input_chain(
+        payload, [cached_ev, live_ev], timeout=3.0, redis=redis, cache_key=key
+    )
+
+    cached_ev.evaluate.assert_not_awaited()
+    live_ev.evaluate.assert_awaited_once()
+    assert blocked_by is None
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_errored_result_is_not_cached():
+    redis = FakeCacheRedis()
+    key = "sentinel:t1:scores:err"
+
+    ev = _mock_evaluator("pii", score=0.0)
+    ev.evaluate = AsyncMock(
+        return_value=EvalResult(evaluator_name="pii", score=None, flag=False, error="boom")
+    )
+    payload = EvalPayload(input_text="hello", config={})
+
+    await run_input_chain(payload, [ev], timeout=3.0, redis=redis, cache_key=key)
+
+    assert key not in redis._store
+
+
+@pytest.mark.asyncio
+async def test_cache_lookup_failure_falls_back_to_live_inference():
+    """A broken Redis client must never break the chain — fail open."""
+
+    class BrokenRedis:
+        async def hgetall(self, key):
+            raise ConnectionError("redis down")
+
+    ev = _mock_evaluator("pii", score=0.01)
+    payload = EvalPayload(input_text="hello", config={})
+
+    results, blocked_by = await run_input_chain(
+        payload, [ev], timeout=3.0, redis=BrokenRedis(), cache_key="whatever"
+    )
+
+    ev.evaluate.assert_awaited_once()
+    assert blocked_by is None
+    assert results[0].score == pytest.approx(0.01)
 
 
 # ── Output chain ─────────────────────────────────────────────────────────────

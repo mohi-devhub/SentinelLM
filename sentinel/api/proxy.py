@@ -14,6 +14,7 @@ from opentelemetry import trace
 from pydantic import BaseModel
 
 from sentinel.api.rate_limit import enforce_rate_limit
+from sentinel.cache.client import cache_key as build_cache_key
 from sentinel.chain.aggregator import SentinelResult, assemble_result, build_request_record
 from sentinel.chain.runner import run_input_chain, run_output_chain
 from sentinel.evaluators.base import EvalPayload
@@ -148,8 +149,21 @@ async def chat_completions(
         current_span.set_attribute("sentinel.tenant_id", str(http_request.state.tenant_id))
 
     # ── Input evaluator chain ────────────────────────────────────────────────
+    cache_config: dict = config.get("cache", {})
+    input_cache_key: str | None = None
+    if cache_config.get("enabled", False):
+        config_version = str(config.get("app", {}).get("config_version", "1"))
+        input_cache_key = build_cache_key(
+            input_text, config_version, str(http_request.state.tenant_id)
+        )
+
     input_results, blocked_by = await run_input_chain(
-        payload, http_request.app.state.input_evaluators, timeout
+        payload,
+        http_request.app.state.input_evaluators,
+        timeout,
+        redis=http_request.app.state.redis,
+        cache_key=input_cache_key,
+        cache_ttl=int(cache_config.get("ttl_seconds", 3600)),
     )
 
     # ── PII redact: flag but do NOT block; swap in the cleaned text ──────────
