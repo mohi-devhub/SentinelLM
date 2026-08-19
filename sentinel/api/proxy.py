@@ -409,6 +409,25 @@ async def chat_completions(
         payload, http_request.app.state.output_evaluators, timeout
     )
 
+    # exfiltration action:strip — swap in the cleaned text before it reaches
+    # the client. Only the non-streaming path can do this: a streamed
+    # response has already been sent to the client incrementally by the time
+    # this evaluator sees the accumulated text (see exfiltration.py).
+    exfil_result = next((r for r in output_results if r.evaluator_name == "exfiltration"), None)
+    exfil_metadata: dict = (exfil_result.metadata or {}) if exfil_result else {}
+    stripped_text = exfil_metadata.get("stripped_text")
+    should_substitute = (
+        exfil_result is not None
+        and exfil_result.flag
+        and exfil_metadata.get("action") == "strip"
+        and stripped_text
+    )
+    if should_substitute:
+        try:
+            llm_response["choices"][0]["message"]["content"] = stripped_text
+        except (KeyError, IndexError):
+            logger.warning("could not substitute stripped_text into LLM response")
+
     latency_total = int((time.monotonic() - total_start) * 1000)
 
     # ── Assemble, log, respond ───────────────────────────────────────────────

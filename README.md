@@ -30,7 +30,7 @@ It is a **drop-in replacement** for your existing LLM client — point your `bas
 
 ## Evaluators
 
-Seven evaluators across two layers. Input evaluators run before the LLM call and can block the request. Output evaluators run after and flag responses for human review.
+Eight evaluators across two layers. Input evaluators run before the LLM call and can block the request. Output evaluators run after; most flag responses for human review, and `exfiltration` can also strip the response before it reaches the client.
 
 | Evaluator | Layer | Action | Model |
 |-----------|-------|--------|-------|
@@ -38,6 +38,7 @@ Seven evaluators across two layers. Input evaluators run before the LLM call and
 | `prompt_injection` | input | block | `deepset/deberta-v3-base-injection` |
 | `topic_guardrail` | input | block | `all-MiniLM-L6-v2` (cosine sim) |
 | `toxicity` | output | flag | Detoxify |
+| `exfiltration` | output | flag or strip | regex³ |
 | `relevance` | output | flag | `all-MiniLM-L6-v2` (cosine sim) |
 | `hallucination` | output | flag | `vectara/hallucination_evaluation_model`¹ |
 | `faithfulness` | output | flag | `vectara/hallucination_evaluation_model`¹ |
@@ -45,6 +46,8 @@ Seven evaluators across two layers. Input evaluators run before the LLM call and
 ¹ Purpose-built factual-consistency model, measured **AUC 0.78** vs **0.59** for the generic NLI classifier it replaced — see [Evaluator Accuracy](#evaluator-accuracy). Runs via `trust_remote_code=True` (executes vendor code from the model repo); set `backend: nli` in `config.yaml` to use the original `cross-encoder/nli-deberta-v3-base` path instead if that's not acceptable in your environment.
 
 ² Measured directly against Presidio: the smaller `en_core_web_sm` model misreads ordinary capitalized words as `PERSON` (a product name, a section label like "Untrusted") at the same confidence as a genuine name match — no threshold separates them. `en_core_web_lg` fixes both while still catching real names; costs ~700MB vs ~12MB in the image. `DATE_TIME` is excluded from PII's sensitive-entity list for the same reason (see `sentinel/evaluators/input/pii.py`) — plain business phrases like "year-over-year" scored as confidently as real detections.
+
+³ Deterministic, not a model: strips markdown image tags (`![...](url)`) pointing at external URLs from LLM output — a known data-exfiltration technique, since a client that eagerly renders markdown auto-fetches the URL, leaking anything encoded in it before a human reads the reply. Only protects the non-streaming response path — see `sentinel/evaluators/output/exfiltration.py`.
 
 All evaluators are **fail-open** — a model crash or timeout never blocks a legitimate request.
 
@@ -223,7 +226,7 @@ POST /v1/chat/completions
 ┌─────────────────────────────────────────┐
 │  Output Chain  (all run, fail-open)     │
 │                                         │
-│  toxicity · relevance                   │
+│  toxicity · exfiltration · relevance    │
 │  hallucination · faithfulness           │
 └─────────────────────────────────────────┘
         │

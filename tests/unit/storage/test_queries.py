@@ -39,6 +39,7 @@ def _fake_row(**overrides) -> MagicMock:
         "score_prompt_injection": 0.02,
         "score_topic_guardrail": 0.80,
         "score_toxicity": 0.03,
+        "score_exfiltration": 0.0,
         "score_relevance": 0.90,
         "score_hallucination": 0.04,
         "score_faithfulness": 0.91,
@@ -46,6 +47,7 @@ def _fake_row(**overrides) -> MagicMock:
         "flag_prompt_injection": False,
         "flag_topic_guardrail": False,
         "flag_toxicity": False,
+        "flag_exfiltration": False,
         "flag_relevance": False,
         "flag_hallucination": False,
         "flag_faithfulness": False,
@@ -53,6 +55,7 @@ def _fake_row(**overrides) -> MagicMock:
         "latency_prompt_injection": 10,
         "latency_topic_guardrail": 8,
         "latency_toxicity": 15,
+        "latency_exfiltration": 2,
         "latency_relevance": 12,
         "latency_hallucination": 60,
         "latency_faithfulness": 58,
@@ -91,7 +94,7 @@ def test_row_to_dict_basic_fields():
 
 
 def test_row_to_dict_scores_structure():
-    """scores dict contains all 7 evaluator keys."""
+    """scores dict contains all 8 evaluator keys."""
     d = _row_to_dict(_fake_row())
     scores = d["scores"]
     for ev in _VALID_EVALUATORS:

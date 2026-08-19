@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from sentinel.evaluators.input.pii import PIIEvaluator
 from sentinel.evaluators.input.prompt_injection import PromptInjectionEvaluator
 from sentinel.evaluators.input.topic_guardrail import TopicGuardrailEvaluator
+from sentinel.evaluators.output.exfiltration import ExfiltrationEvaluator
 from sentinel.evaluators.output.faithfulness import FaithfulnessEvaluator
 from sentinel.evaluators.output.hallucination import HallucinationEvaluator
 from sentinel.evaluators.output.relevance import RelevanceEvaluator
@@ -31,6 +32,7 @@ EVALUATOR_REGISTRY: dict[str, type[BaseEvaluator]] = {
     "topic_guardrail": TopicGuardrailEvaluator,
     # Output evaluators (run after the LLM response, all always run)
     "toxicity": ToxicityEvaluator,
+    "exfiltration": ExfiltrationEvaluator,
     "relevance": RelevanceEvaluator,
     "hallucination": HallucinationEvaluator,
     "faithfulness": FaithfulnessEvaluator,

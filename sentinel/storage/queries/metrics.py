@@ -27,7 +27,8 @@ _BUCKET_TRUNC: dict[str, str] = {
 
 _FLAG_COLS = (
     "flag_pii OR flag_prompt_injection OR flag_topic_guardrail "
-    "OR flag_toxicity OR flag_relevance OR flag_hallucination OR flag_faithfulness"
+    "OR flag_toxicity OR flag_exfiltration OR flag_relevance "
+    "OR flag_hallucination OR flag_faithfulness"
 )
 
 
@@ -67,6 +68,9 @@ async def get_aggregate_metrics(
                 COUNT(*) FILTER (WHERE flag_toxicity)::float / NULLIF(COUNT(*), 0), 0
             ) AS flag_rate_toxicity,
             COALESCE(
+                COUNT(*) FILTER (WHERE flag_exfiltration)::float / NULLIF(COUNT(*), 0), 0
+            ) AS flag_rate_exfiltration,
+            COALESCE(
                 COUNT(*) FILTER (WHERE flag_relevance)::float / NULLIF(COUNT(*), 0), 0
             ) AS flag_rate_relevance,
             COALESCE(
@@ -99,6 +103,7 @@ async def get_aggregate_metrics(
             "flag_rate_prompt_injection": _round(row["flag_rate_prompt_injection"]),
             "flag_rate_topic_guardrail": _round(row["flag_rate_topic_guardrail"]),
             "flag_rate_toxicity": _round(row["flag_rate_toxicity"]),
+            "flag_rate_exfiltration": _round(row["flag_rate_exfiltration"]),
             "flag_rate_relevance": _round(row["flag_rate_relevance"]),
             "flag_rate_hallucination": _round(row["flag_rate_hallucination"]),
             "flag_rate_faithfulness": _round(row["flag_rate_faithfulness"]),
@@ -134,6 +139,7 @@ async def get_summary_metrics(pool: asyncpg.Pool, tenant_id: UUID) -> dict[str, 
                 CASE WHEN flag_prompt_injection THEN 'prompt_injection' END,
                 CASE WHEN flag_topic_guardrail  THEN 'topic_guardrail'  END,
                 CASE WHEN flag_toxicity         THEN 'toxicity'         END,
+                CASE WHEN flag_exfiltration     THEN 'exfiltration'     END,
                 CASE WHEN flag_relevance        THEN 'relevance'        END,
                 CASE WHEN flag_hallucination    THEN 'hallucination'    END,
                 CASE WHEN flag_faithfulness     THEN 'faithfulness'     END

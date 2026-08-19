@@ -9,14 +9,15 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 
-def test_evaluator_registry_has_all_seven_evaluators():
+def test_evaluator_registry_has_all_eight_evaluators():
     from sentinel.evaluators.registry import EVALUATOR_REGISTRY
 
-    assert len(EVALUATOR_REGISTRY) == 7
+    assert len(EVALUATOR_REGISTRY) == 8
     assert "pii" in EVALUATOR_REGISTRY
     assert "prompt_injection" in EVALUATOR_REGISTRY
     assert "topic_guardrail" in EVALUATOR_REGISTRY
     assert "toxicity" in EVALUATOR_REGISTRY
+    assert "exfiltration" in EVALUATOR_REGISTRY
     assert "relevance" in EVALUATOR_REGISTRY
     assert "hallucination" in EVALUATOR_REGISTRY
     assert "faithfulness" in EVALUATOR_REGISTRY
@@ -57,7 +58,7 @@ def test_load_evaluators_one_enabled():
 
 
 def test_load_evaluators_all_enabled():
-    """All seven evaluators enabled → seven instances returned in registry order."""
+    """All eight evaluators enabled → eight instances returned in registry order."""
     from sentinel.evaluators.registry import EVALUATOR_REGISTRY, load_evaluators
 
     ev_names = list(EVALUATOR_REGISTRY.keys())
@@ -68,7 +69,7 @@ def test_load_evaluators_all_enabled():
     with patch.dict(EVALUATOR_REGISTRY, mock_registry):
         result = load_evaluators(config)
 
-    assert len(result) == 7
+    assert len(result) == 8
 
 
 def test_load_evaluators_preserves_registry_order():

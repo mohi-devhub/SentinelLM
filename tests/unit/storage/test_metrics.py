@@ -46,6 +46,7 @@ def _fake_bucket_row(**overrides) -> MagicMock:
         "flag_rate_prompt_injection": 0.01,
         "flag_rate_topic_guardrail": 0.03,
         "flag_rate_toxicity": 0.05,
+        "flag_rate_exfiltration": 0.0,
         "flag_rate_relevance": 0.04,
         "flag_rate_hallucination": 0.02,
         "flag_rate_faithfulness": 0.01,

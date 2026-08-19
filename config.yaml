@@ -101,6 +101,17 @@ evaluators:
                                 # any: flag if ANY dimension exceeds threshold
                                 # all: flag only if ALL dimensions exceed threshold
 
+  exfiltration:
+    enabled: true
+    threshold: 0.5               # effectively binary — any match scores 1.0
+    action: strip                # strip | flag
+                                # strip: remove the image markdown and swap the
+                                #   cleaned text into the response (default)
+                                # flag: score and log only, response unchanged —
+                                #   use to observe before enabling stripping
+    allowed_domains: []          # hostnames exempt from stripping, e.g. your
+                                # own CDN — image URLs elsewhere are stripped
+
   relevance:
     enabled: true
     threshold: 0.30             # cosine similarity BELOW which output is flagged

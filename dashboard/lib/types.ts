@@ -5,6 +5,7 @@ export interface Scores {
   prompt_injection: number | null;
   topic_guardrail: number | null;
   toxicity: number | null;
+  exfiltration: number | null;
   relevance: number | null;
   hallucination: number | null;
   faithfulness: number | null;
@@ -15,6 +16,7 @@ export interface Latencies {
   prompt_injection: number | null;
   topic_guardrail: number | null;
   toxicity: number | null;
+  exfiltration: number | null;
   relevance: number | null;
   hallucination: number | null;
   faithfulness: number | null;
@@ -61,6 +63,7 @@ export interface MetricBucket {
   flag_rate_prompt_injection: number;
   flag_rate_topic_guardrail: number;
   flag_rate_toxicity: number;
+  flag_rate_exfiltration: number;
   flag_rate_relevance: number;
   flag_rate_hallucination: number;
   flag_rate_faithfulness: number;

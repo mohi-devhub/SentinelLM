@@ -39,6 +39,7 @@ class RequestRecord:
 
     # Output evaluator scores
     score_toxicity: float | None = None
+    score_exfiltration: float | None = None
     score_relevance: float | None = None
     score_hallucination: float | None = None
     score_faithfulness: float | None = None
@@ -48,6 +49,7 @@ class RequestRecord:
     latency_prompt_injection: int | None = None
     latency_topic_guardrail: int | None = None
     latency_toxicity: int | None = None
+    latency_exfiltration: int | None = None
     latency_relevance: int | None = None
     latency_hallucination: int | None = None
     latency_faithfulness: int | None = None
@@ -59,6 +61,7 @@ class RequestRecord:
     flag_prompt_injection: bool = False
     flag_topic_guardrail: bool = False
     flag_toxicity: bool = False
+    flag_exfiltration: bool = False
     flag_relevance: bool = False
     flag_hallucination: bool = False
     flag_faithfulness: bool = False

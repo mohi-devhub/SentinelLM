@@ -36,6 +36,11 @@ evaluators:
     threshold: 0.70
     dimensions: [toxicity, threat]
     flag_on: any
+  exfiltration:
+    enabled: true
+    threshold: 0.5
+    action: strip
+    allowed_domains: []
   relevance:
     enabled: true
     threshold: 0.30

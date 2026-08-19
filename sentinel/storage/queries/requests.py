@@ -11,17 +11,19 @@ from sentinel.storage.models import RequestRecord
 
 _FLAG_COLS = (
     "flag_pii OR flag_prompt_injection OR flag_topic_guardrail "
-    "OR flag_toxicity OR flag_relevance OR flag_hallucination OR flag_faithfulness"
+    "OR flag_toxicity OR flag_exfiltration OR flag_relevance "
+    "OR flag_hallucination OR flag_faithfulness"
 )
 
 _SCORE_COLS = """
     id, created_at, model, blocked, block_reason,
     score_pii, score_prompt_injection, score_topic_guardrail,
-    score_toxicity, score_relevance, score_hallucination, score_faithfulness,
+    score_toxicity, score_exfiltration, score_relevance, score_hallucination, score_faithfulness,
     flag_pii, flag_prompt_injection, flag_topic_guardrail,
-    flag_toxicity, flag_relevance, flag_hallucination, flag_faithfulness,
+    flag_toxicity, flag_exfiltration, flag_relevance, flag_hallucination, flag_faithfulness,
     latency_pii, latency_prompt_injection, latency_topic_guardrail,
-    latency_toxicity, latency_relevance, latency_hallucination, latency_faithfulness,
+    latency_toxicity, latency_exfiltration, latency_relevance,
+    latency_hallucination, latency_faithfulness,
     latency_llm, latency_total,
     input_text, input_redacted, has_context,
     reviewed, review_label, reviewer_note, reviewed_at
@@ -34,6 +36,7 @@ _VALID_EVALUATORS = frozenset(
         "prompt_injection",
         "topic_guardrail",
         "toxicity",
+        "exfiltration",
         "relevance",
         "hallucination",
         "faithfulness",
@@ -55,6 +58,7 @@ def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
             "prompt_injection": row["score_prompt_injection"],
             "topic_guardrail": row["score_topic_guardrail"],
             "toxicity": row["score_toxicity"],
+            "exfiltration": row["score_exfiltration"],
             "relevance": row["score_relevance"],
             "hallucination": row["score_hallucination"],
             "faithfulness": row["score_faithfulness"],
@@ -64,6 +68,7 @@ def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
             "prompt_injection": row["latency_prompt_injection"],
             "topic_guardrail": row["latency_topic_guardrail"],
             "toxicity": row["latency_toxicity"],
+            "exfiltration": row["latency_exfiltration"],
             "relevance": row["latency_relevance"],
             "hallucination": row["latency_hallucination"],
             "faithfulness": row["latency_faithfulness"],
@@ -97,6 +102,7 @@ INSERT INTO requests (
     score_prompt_injection,
     score_topic_guardrail,
     score_toxicity,
+    score_exfiltration,
     score_relevance,
     score_hallucination,
     score_faithfulness,
@@ -104,6 +110,7 @@ INSERT INTO requests (
     latency_prompt_injection,
     latency_topic_guardrail,
     latency_toxicity,
+    latency_exfiltration,
     latency_relevance,
     latency_hallucination,
     latency_faithfulness,
@@ -113,6 +120,7 @@ INSERT INTO requests (
     flag_prompt_injection,
     flag_topic_guardrail,
     flag_toxicity,
+    flag_exfiltration,
     flag_relevance,
     flag_hallucination,
     flag_faithfulness
@@ -120,7 +128,7 @@ INSERT INTO requests (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
     $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
     $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-    $31, $32
+    $31, $32, $33, $34, $35
 )
 RETURNING id, created_at
 """
@@ -151,6 +159,7 @@ async def insert_request(pool: asyncpg.Pool, record: RequestRecord) -> RequestRe
             record.score_prompt_injection,
             record.score_topic_guardrail,
             record.score_toxicity,
+            record.score_exfiltration,
             record.score_relevance,
             record.score_hallucination,
             record.score_faithfulness,
@@ -158,6 +167,7 @@ async def insert_request(pool: asyncpg.Pool, record: RequestRecord) -> RequestRe
             record.latency_prompt_injection,
             record.latency_topic_guardrail,
             record.latency_toxicity,
+            record.latency_exfiltration,
             record.latency_relevance,
             record.latency_hallucination,
             record.latency_faithfulness,
@@ -167,6 +177,7 @@ async def insert_request(pool: asyncpg.Pool, record: RequestRecord) -> RequestRe
             record.flag_prompt_injection,
             record.flag_topic_guardrail,
             record.flag_toxicity,
+            record.flag_exfiltration,
             record.flag_relevance,
             record.flag_hallucination,
             record.flag_faithfulness,
