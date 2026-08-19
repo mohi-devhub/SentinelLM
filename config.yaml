@@ -7,6 +7,13 @@ app:
   log_level: INFO             # DEBUG | INFO | WARNING | ERROR
   shadow_mode: false          # if true: log scores but never block requests
                               # useful for threshold tuning before going live
+  wrap_untrusted_input: true  # wrap user messages in <untrusted_user_input> tags
+                              # and add a system instruction not to treat their
+                              # content as directives, before forwarding to the
+                              # LLM. Evaluators still score the original,
+                              # unwrapped text — this only hardens the outbound
+                              # prompt. Content-modifying like PII redaction, so
+                              # default true; set false to send messages verbatim.
 
 # ─── LLM Backend ─────────────────────────────────────────────────────────────
 # Choose one provider. Switch by changing `provider` — no code changes needed.
