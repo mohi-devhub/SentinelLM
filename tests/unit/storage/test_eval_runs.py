@@ -27,6 +27,9 @@ from sentinel.storage.queries.eval_runs import (
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
+_TENANT_ID = uuid.uuid4()
+
+
 def _fake_pool():
     """Mock asyncpg Pool with acquire() as async context manager."""
     pool = MagicMock()
@@ -44,6 +47,7 @@ def _fake_eval_run_row(**overrides) -> MagicMock:
         "id": run_id,
         "created_at": now,
         "completed_at": None,
+        "tenant_id": _TENANT_ID,
         "label": "test_run",
         "dataset_path": "evals/test.jsonl",
         "baseline_run_id": None,
@@ -115,7 +119,9 @@ async def test_insert_eval_run_returns_record():
     row.__getitem__ = lambda self, key: {"id": run_id, "created_at": now}[key]
     conn.fetchrow = AsyncMock(return_value=row)
 
-    record = await insert_eval_run(pool, label="run1", dataset_path="data.jsonl")
+    record = await insert_eval_run(
+        pool, tenant_id=_TENANT_ID, label="run1", dataset_path="data.jsonl"
+    )
 
     assert record.label == "run1"
     assert record.status == "running"
@@ -133,7 +139,11 @@ async def test_insert_eval_run_with_baseline():
     conn.fetchrow = AsyncMock(return_value=row)
 
     record = await insert_eval_run(
-        pool, label="run2", dataset_path="data.jsonl", baseline_run_id=baseline_id
+        pool,
+        tenant_id=_TENANT_ID,
+        label="run2",
+        dataset_path="data.jsonl",
+        baseline_run_id=baseline_id,
     )
 
     assert record.baseline_run_id == baseline_id
@@ -151,6 +161,7 @@ async def test_complete_eval_run_executes_update():
     await complete_eval_run(
         pool=pool,
         run_id=run_id,
+        tenant_id=_TENANT_ID,
         record_count=42,
         summary={"pii": {"flag_rate": 0.1}},
         regression=None,
@@ -172,6 +183,7 @@ async def test_complete_eval_run_with_regression():
     await complete_eval_run(
         pool=pool,
         run_id=run_id,
+        tenant_id=_TENANT_ID,
         record_count=10,
         summary={},
         regression=regression,
@@ -189,7 +201,7 @@ async def test_fail_eval_run_executes_update():
     conn.execute = AsyncMock()
     run_id = uuid.uuid4()
 
-    await fail_eval_run(pool, run_id)
+    await fail_eval_run(pool, run_id, _TENANT_ID)
 
     conn.execute.assert_awaited_once()
     assert run_id in conn.execute.call_args.args
@@ -250,7 +262,7 @@ async def test_list_eval_runs_returns_records():
     row = _fake_eval_run_row()
     conn.fetch = AsyncMock(return_value=[row, row])
 
-    runs = await list_eval_runs(pool)
+    runs = await list_eval_runs(pool, _TENANT_ID)
 
     assert len(runs) == 2
     assert all(isinstance(r, EvalRunRecord) for r in runs)
@@ -261,7 +273,7 @@ async def test_list_eval_runs_empty():
     pool, conn = _fake_pool()
     conn.fetch = AsyncMock(return_value=[])
 
-    runs = await list_eval_runs(pool)
+    runs = await list_eval_runs(pool, _TENANT_ID)
 
     assert runs == []
 
@@ -275,7 +287,7 @@ async def test_get_eval_run_by_label_found():
     row = _fake_eval_run_row(label="my_run")
     conn.fetchrow = AsyncMock(return_value=row)
 
-    result = await get_eval_run_by_label(pool, "my_run")
+    result = await get_eval_run_by_label(pool, "my_run", _TENANT_ID)
 
     assert result is not None
     assert result.label == "my_run"
@@ -286,7 +298,7 @@ async def test_get_eval_run_by_label_not_found():
     pool, conn = _fake_pool()
     conn.fetchrow = AsyncMock(return_value=None)
 
-    result = await get_eval_run_by_label(pool, "nonexistent")
+    result = await get_eval_run_by_label(pool, "nonexistent", _TENANT_ID)
 
     assert result is None
 
@@ -301,7 +313,7 @@ async def test_get_eval_run_by_id_found():
     row = _fake_eval_run_row(id=run_id)
     conn.fetchrow = AsyncMock(return_value=row)
 
-    result = await get_eval_run_by_id(pool, run_id)
+    result = await get_eval_run_by_id(pool, run_id, _TENANT_ID)
 
     assert result is not None
 
@@ -311,6 +323,6 @@ async def test_get_eval_run_by_id_not_found():
     pool, conn = _fake_pool()
     conn.fetchrow = AsyncMock(return_value=None)
 
-    result = await get_eval_run_by_id(pool, uuid.uuid4())
+    result = await get_eval_run_by_id(pool, uuid.uuid4(), _TENANT_ID)
 
     assert result is None

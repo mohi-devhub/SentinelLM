@@ -5,6 +5,7 @@ All tests use asyncpg MagicMocks — no real database required.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -19,6 +20,9 @@ from sentinel.storage.queries.metrics import (
 )
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+_TENANT_ID = uuid.uuid4()
 
 
 def _fake_pool():
@@ -93,7 +97,7 @@ async def test_get_aggregate_metrics_empty():
     pool, conn = _fake_pool()
     conn.fetch = AsyncMock(return_value=[])
 
-    result = await get_aggregate_metrics(pool)
+    result = await get_aggregate_metrics(pool, _TENANT_ID)
 
     assert result == []
     conn.fetch.assert_awaited_once()
@@ -105,7 +109,7 @@ async def test_get_aggregate_metrics_returns_list():
     row = _fake_bucket_row()
     conn.fetch = AsyncMock(return_value=[row])
 
-    result = await get_aggregate_metrics(pool, window="24h", bucket_size="1h")
+    result = await get_aggregate_metrics(pool, _TENANT_ID, window="24h", bucket_size="1h")
 
     assert len(result) == 1
     entry = result[0]
@@ -126,7 +130,7 @@ async def test_get_aggregate_metrics_null_scores():
     row = _fake_bucket_row(avg_toxicity=None, avg_relevance=None, avg_hallucination=None)
     conn.fetch = AsyncMock(return_value=[row])
 
-    result = await get_aggregate_metrics(pool)
+    result = await get_aggregate_metrics(pool, _TENANT_ID)
 
     assert result[0]["avg_toxicity"] is None
     assert result[0]["avg_relevance"] is None
@@ -138,7 +142,7 @@ async def test_get_aggregate_metrics_unknown_window_defaults():
     pool, conn = _fake_pool()
     conn.fetch = AsyncMock(return_value=[])
 
-    await get_aggregate_metrics(pool, window="INVALID", bucket_size="INVALID")
+    await get_aggregate_metrics(pool, _TENANT_ID, window="INVALID", bucket_size="INVALID")
 
     # Should not raise; fetch should still be called
     conn.fetch.assert_awaited_once()
@@ -149,7 +153,7 @@ async def test_get_aggregate_metrics_multiple_windows():
     for window in _WINDOW_INTERVAL:
         pool, conn = _fake_pool()
         conn.fetch = AsyncMock(return_value=[])
-        await get_aggregate_metrics(pool, window=window)
+        await get_aggregate_metrics(pool, _TENANT_ID, window=window)
         conn.fetch.assert_awaited_once()
 
 
@@ -174,7 +178,7 @@ async def test_get_summary_metrics_returns_dict():
 
     conn.fetchrow = AsyncMock(side_effect=[summary_row, top_flag_row])
 
-    result = await get_summary_metrics(pool)
+    result = await get_summary_metrics(pool, _TENANT_ID)
 
     assert result["total_requests_24h"] == 500
     assert result["blocked_requests_24h"] == 20
@@ -200,6 +204,6 @@ async def test_get_summary_metrics_no_top_flag():
 
     conn.fetchrow = AsyncMock(side_effect=[summary_row, None])
 
-    result = await get_summary_metrics(pool)
+    result = await get_summary_metrics(pool, _TENANT_ID)
 
     assert result["top_flag_reason"] is None

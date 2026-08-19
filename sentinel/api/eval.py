@@ -18,7 +18,7 @@ router = APIRouter()
 @router.get("/v1/sentinel/eval")
 async def list_runs(request: Request) -> JSONResponse:
     pool = request.app.state.db_pool
-    runs = await list_eval_runs(pool)
+    runs = await list_eval_runs(pool, request.state.tenant_id)
     return JSONResponse(
         content=[
             {
@@ -38,7 +38,7 @@ async def list_runs(request: Request) -> JSONResponse:
 @router.get("/v1/sentinel/eval/{run_id}")
 async def run_detail(request: Request, run_id: UUID) -> JSONResponse:
     pool = request.app.state.db_pool
-    run = await get_eval_run_by_id(pool, run_id)
+    run = await get_eval_run_by_id(pool, run_id, request.state.tenant_id)
     if run is None:
         return JSONResponse(status_code=404, content={"error": "eval run not found"})
     return JSONResponse(

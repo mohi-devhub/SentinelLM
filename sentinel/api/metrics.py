@@ -17,12 +17,14 @@ async def aggregate(
     bucket_size: str = Query("1h", enum=["5m", "15m", "1h", "6h", "1d"]),
 ) -> JSONResponse:
     pool = request.app.state.db_pool
-    buckets = await get_aggregate_metrics(pool, window=window, bucket_size=bucket_size)
+    buckets = await get_aggregate_metrics(
+        pool, request.state.tenant_id, window=window, bucket_size=bucket_size
+    )
     return JSONResponse(content={"window": window, "bucket_size": bucket_size, "buckets": buckets})
 
 
 @router.get("/v1/sentinel/metrics/summary")
 async def summary(request: Request) -> JSONResponse:
     pool = request.app.state.db_pool
-    data = await get_summary_metrics(pool)
+    data = await get_summary_metrics(pool, request.state.tenant_id)
     return JSONResponse(content=data)

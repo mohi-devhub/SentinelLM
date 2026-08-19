@@ -26,7 +26,7 @@ async def review_queue(
     limit: int = Query(20, ge=1, le=100),
 ) -> JSONResponse:
     pool = request.app.state.db_pool
-    items = await get_review_queue(pool, limit=limit)
+    items = await get_review_queue(pool, request.state.tenant_id, limit=limit)
     return JSONResponse(content=items)
 
 
@@ -43,7 +43,7 @@ async def submit_review_label(
         )
 
     pool = request.app.state.db_pool
-    updated = await submit_review(pool, request_id, body.label, body.note)
+    updated = await submit_review(pool, request_id, request.state.tenant_id, body.label, body.note)
     if not updated:
         return JSONResponse(status_code=404, content={"error": "request not found"})
     return JSONResponse(content={"status": "ok", "request_id": str(request_id)})

@@ -98,12 +98,14 @@ def build_request_record(
     input_text: str | None,
     input_redacted: str | None,
     has_context: bool,
+    tenant_id: UUID | None = None,
 ) -> RequestRecord:
     """Populate a RequestRecord from a SentinelResult for DB persistence."""
     s = sentinel_result.scores
     lat = sentinel_result.latency_ms
 
     return RequestRecord(
+        tenant_id=tenant_id,
         model=model,
         input_hash=input_hash,
         input_text=input_text,

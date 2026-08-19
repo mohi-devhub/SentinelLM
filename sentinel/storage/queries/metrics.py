@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 import asyncpg
 
@@ -32,10 +33,11 @@ _FLAG_COLS = (
 
 async def get_aggregate_metrics(
     pool: asyncpg.Pool,
+    tenant_id: UUID,
     window: str = "24h",
     bucket_size: str = "1h",
 ) -> list[dict[str, Any]]:
-    """Return time-bucketed metrics for the dashboard line/bar charts.
+    """Return time-bucketed metrics for one tenant's dashboard line/bar charts.
 
     Values for `window` and `bucket_size` are validated against whitelists
     before interpolation into the query string.
@@ -78,12 +80,12 @@ async def get_aggregate_metrics(
                 0
             )::int                                                          AS p95_latency_total
         FROM requests
-        WHERE created_at >= NOW() - INTERVAL '{interval}'
+        WHERE tenant_id = $1 AND created_at >= NOW() - INTERVAL '{interval}'
         GROUP BY bucket_start
         ORDER BY bucket_start ASC
     """
     async with pool.acquire() as conn:
-        rows = await conn.fetch(query)
+        rows = await conn.fetch(query, tenant_id)
 
     return [
         {
@@ -106,8 +108,8 @@ async def get_aggregate_metrics(
     ]
 
 
-async def get_summary_metrics(pool: asyncpg.Pool) -> dict[str, Any]:
-    """Return high-level 24-hour summary stats for the dashboard header cards."""
+async def get_summary_metrics(pool: asyncpg.Pool, tenant_id: UUID) -> dict[str, Any]:
+    """Return one tenant's high-level 24-hour summary stats for the dashboard header cards."""
     query = f"""
         SELECT
             COUNT(*)                                                        AS total_requests_24h,
@@ -121,7 +123,7 @@ async def get_summary_metrics(pool: asyncpg.Pool) -> dict[str, Any]:
                 WHERE NOT reviewed AND ({_FLAG_COLS})
             )                                                               AS unreviewed_flags
         FROM requests
-        WHERE created_at >= NOW() - INTERVAL '24 hours'
+        WHERE tenant_id = $1 AND created_at >= NOW() - INTERVAL '24 hours'
     """
 
     top_flag_query = """
@@ -137,7 +139,7 @@ async def get_summary_metrics(pool: asyncpg.Pool) -> dict[str, Any]:
                 CASE WHEN flag_faithfulness     THEN 'faithfulness'     END
             ]) AS unnested_flag
             FROM requests
-            WHERE created_at >= NOW() - INTERVAL '24 hours'
+            WHERE tenant_id = $1 AND created_at >= NOW() - INTERVAL '24 hours'
         ) t
         WHERE unnested_flag IS NOT NULL
         GROUP BY unnested_flag
@@ -146,8 +148,8 @@ async def get_summary_metrics(pool: asyncpg.Pool) -> dict[str, Any]:
     """
 
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(query)
-        top_flag_row = await conn.fetchrow(top_flag_query)
+        row = await conn.fetchrow(query, tenant_id)
+        top_flag_row = await conn.fetchrow(top_flag_query, tenant_id)
 
     return {
         "total_requests_24h": row["total_requests_24h"],

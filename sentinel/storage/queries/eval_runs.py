@@ -13,8 +13,8 @@ from sentinel.storage.models import EvalRunRecord
 # ── eval_runs ────────────────────────────────────────────────────────────────
 
 _INSERT_EVAL_RUN = """
-INSERT INTO eval_runs (id, label, dataset_path, baseline_run_id, status)
-VALUES ($1, $2, $3, $4, 'running')
+INSERT INTO eval_runs (id, tenant_id, label, dataset_path, baseline_run_id, status)
+VALUES ($1, $2, $3, $4, $5, 'running')
 RETURNING id, created_at
 """
 
@@ -22,38 +22,39 @@ _COMPLETE_EVAL_RUN = """
 UPDATE eval_runs
 SET status        = 'complete',
     completed_at  = NOW(),
-    record_count  = $2,
-    summary_json  = $3,
-    regression_json = $4
-WHERE id = $1
+    record_count  = $3,
+    summary_json  = $4,
+    regression_json = $5
+WHERE id = $1 AND tenant_id = $2
 """
 
 _FAIL_EVAL_RUN = """
 UPDATE eval_runs
 SET status = 'failed', completed_at = NOW()
-WHERE id = $1
+WHERE id = $1 AND tenant_id = $2
 """
 
 _LIST_EVAL_RUNS = """
-SELECT id, created_at, completed_at, label, dataset_path,
+SELECT id, created_at, completed_at, tenant_id, label, dataset_path,
        baseline_run_id, record_count, status, summary_json, regression_json
 FROM eval_runs
+WHERE tenant_id = $1
 ORDER BY created_at DESC
 LIMIT 50
 """
 
 _GET_EVAL_RUN_BY_LABEL = """
-SELECT id, created_at, completed_at, label, dataset_path,
+SELECT id, created_at, completed_at, tenant_id, label, dataset_path,
        baseline_run_id, record_count, status, summary_json, regression_json
 FROM eval_runs
-WHERE label = $1
+WHERE label = $1 AND tenant_id = $2
 """
 
 _GET_EVAL_RUN_BY_ID = """
-SELECT id, created_at, completed_at, label, dataset_path,
+SELECT id, created_at, completed_at, tenant_id, label, dataset_path,
        baseline_run_id, record_count, status, summary_json, regression_json
 FROM eval_runs
-WHERE id = $1
+WHERE id = $1 AND tenant_id = $2
 """
 
 # ── eval_results ─────────────────────────────────────────────────────────────
@@ -76,18 +77,19 @@ _COMPLETE_OFFLINE_EVAL_RUN = """
 UPDATE eval_runs
 SET status                       = 'complete',
     completed_at                 = NOW(),
-    record_count                 = $2,
-    summary_json                 = $3,
-    regression_json              = $4,
+    record_count                 = $3,
+    summary_json                 = $4,
+    regression_json              = $5,
     eval_mode                    = 'offline',
-    statistical_regression_json  = $5
-WHERE id = $1
+    statistical_regression_json  = $6
+WHERE id = $1 AND tenant_id = $2
 """
 
 _GET_OFFLINE_RUN_SCORES = """
-SELECT scores_json
-FROM eval_results
-WHERE eval_run_id = $1 AND scores_json IS NOT NULL
+SELECT er.scores_json
+FROM eval_results er
+JOIN eval_runs r ON r.id = er.eval_run_id
+WHERE er.eval_run_id = $1 AND r.tenant_id = $2 AND er.scores_json IS NOT NULL
 """
 
 
@@ -101,6 +103,7 @@ def _row_to_eval_run(row: asyncpg.Record) -> EvalRunRecord:
         id=row["id"],
         created_at=row["created_at"],
         completed_at=row["completed_at"],
+        tenant_id=row["tenant_id"],
         label=row["label"],
         dataset_path=row["dataset_path"],
         baseline_run_id=row["baseline_run_id"],
@@ -116,6 +119,7 @@ def _row_to_eval_run(row: asyncpg.Record) -> EvalRunRecord:
 
 async def insert_eval_run(
     pool: asyncpg.Pool,
+    tenant_id: UUID,
     label: str,
     dataset_path: str,
     baseline_run_id: UUID | None = None,
@@ -123,10 +127,13 @@ async def insert_eval_run(
     """Create a new eval_run row in 'running' state and return it."""
     run_id = _uuid.uuid4()
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(_INSERT_EVAL_RUN, run_id, label, dataset_path, baseline_run_id)
+        row = await conn.fetchrow(
+            _INSERT_EVAL_RUN, run_id, tenant_id, label, dataset_path, baseline_run_id
+        )
     return EvalRunRecord(
         id=row["id"],
         created_at=row["created_at"],
+        tenant_id=tenant_id,
         label=label,
         dataset_path=dataset_path,
         baseline_run_id=baseline_run_id,
@@ -137,6 +144,7 @@ async def insert_eval_run(
 async def complete_eval_run(
     pool: asyncpg.Pool,
     run_id: UUID,
+    tenant_id: UUID,
     record_count: int,
     summary: dict,
     regression: dict | None,
@@ -146,16 +154,17 @@ async def complete_eval_run(
         await conn.execute(
             _COMPLETE_EVAL_RUN,
             run_id,
+            tenant_id,
             record_count,
             json.dumps(summary),
             json.dumps(regression) if regression else None,
         )
 
 
-async def fail_eval_run(pool: asyncpg.Pool, run_id: UUID) -> None:
+async def fail_eval_run(pool: asyncpg.Pool, run_id: UUID, tenant_id: UUID) -> None:
     """Mark an eval run as failed."""
     async with pool.acquire() as conn:
-        await conn.execute(_FAIL_EVAL_RUN, run_id)
+        await conn.execute(_FAIL_EVAL_RUN, run_id, tenant_id)
 
 
 async def insert_eval_result(
@@ -203,30 +212,35 @@ async def insert_eval_result(
             )
 
 
-async def list_eval_runs(pool: asyncpg.Pool) -> list[EvalRunRecord]:
-    """Return up to 50 most recent eval runs."""
+async def list_eval_runs(pool: asyncpg.Pool, tenant_id: UUID) -> list[EvalRunRecord]:
+    """Return up to 50 most recent eval runs for one tenant."""
     async with pool.acquire() as conn:
-        rows = await conn.fetch(_LIST_EVAL_RUNS)
+        rows = await conn.fetch(_LIST_EVAL_RUNS, tenant_id)
     return [_row_to_eval_run(r) for r in rows]
 
 
-async def get_eval_run_by_label(pool: asyncpg.Pool, label: str) -> EvalRunRecord | None:
-    """Look up an eval run by its human-readable label."""
+async def get_eval_run_by_label(
+    pool: asyncpg.Pool, label: str, tenant_id: UUID
+) -> EvalRunRecord | None:
+    """Look up an eval run by its human-readable label, scoped to one tenant."""
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(_GET_EVAL_RUN_BY_LABEL, label)
+        row = await conn.fetchrow(_GET_EVAL_RUN_BY_LABEL, label, tenant_id)
     return _row_to_eval_run(row) if row else None
 
 
-async def get_eval_run_by_id(pool: asyncpg.Pool, run_id: UUID) -> EvalRunRecord | None:
-    """Look up an eval run by UUID."""
+async def get_eval_run_by_id(
+    pool: asyncpg.Pool, run_id: UUID, tenant_id: UUID
+) -> EvalRunRecord | None:
+    """Look up an eval run by UUID, scoped to one tenant."""
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(_GET_EVAL_RUN_BY_ID, run_id)
+        row = await conn.fetchrow(_GET_EVAL_RUN_BY_ID, run_id, tenant_id)
     return _row_to_eval_run(row) if row else None
 
 
 async def complete_offline_eval_run(
     pool: asyncpg.Pool,
     run_id: UUID,
+    tenant_id: UUID,
     record_count: int,
     summary: dict,
     regression: dict | None,
@@ -237,6 +251,7 @@ async def complete_offline_eval_run(
         await conn.execute(
             _COMPLETE_OFFLINE_EVAL_RUN,
             run_id,
+            tenant_id,
             record_count,
             json.dumps(summary),
             json.dumps(regression) if regression else None,
@@ -245,7 +260,7 @@ async def complete_offline_eval_run(
 
 
 async def get_offline_run_scores(
-    pool: asyncpg.Pool, run_id: UUID
+    pool: asyncpg.Pool, run_id: UUID, tenant_id: UUID
 ) -> dict[str, list[float]]:
     """Fetch per-evaluator score lists for an offline eval run.
 
@@ -253,7 +268,7 @@ async def get_offline_run_scores(
     Used to fetch baseline scores for statistical regression comparison.
     """
     async with pool.acquire() as conn:
-        rows = await conn.fetch(_GET_OFFLINE_RUN_SCORES, run_id)
+        rows = await conn.fetch(_GET_OFFLINE_RUN_SCORES, run_id, tenant_id)
 
     scores_by_ev: dict[str, list[float]] = {}
     for row in rows:

@@ -8,16 +8,21 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from opentelemetry import trace
 from pydantic import BaseModel
 
+from sentinel.api.rate_limit import enforce_rate_limit
 from sentinel.chain.aggregator import SentinelResult, assemble_result, build_request_record
 from sentinel.chain.runner import run_input_chain, run_output_chain
 from sentinel.evaluators.base import EvalPayload
+from sentinel.observability.alerting import window as alert_window
+from sentinel.observability.metrics import observe_llm_call
+from sentinel.observability.tracing import tracer
 from sentinel.proxy.factory import get_llm_client
 from sentinel.storage.queries.requests import insert_request
-from sentinel.ws.broadcaster import manager as ws_manager
+from sentinel.ws.broadcaster import publish_event
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +72,7 @@ def _compute_input_hash(messages: list[Message]) -> str:
 
 async def _log_and_broadcast(
     pool,
+    redis,
     record,
     request_id: uuid.UUID,
     sentinel_result: SentinelResult,
@@ -74,24 +80,30 @@ async def _log_and_broadcast(
     """Background task: persist the request record and push a WebSocket event.
 
     Errors here are logged but never raised — they must not affect the client.
+    Events are published to Redis (not delivered directly) so every API
+    replica's dashboard connections receive them — see sentinel/ws/broadcaster.py.
     """
+    alert_window.record_request(sentinel_result.blocked, record.latency_total)
+
     try:
         await insert_request(pool, record)
     except Exception:
         logger.exception("failed to insert request record id=%s", request_id)
 
     try:
-        await ws_manager.broadcast(
+        await publish_event(
+            redis,
             {
                 "event_type": "request_blocked" if sentinel_result.blocked else "request_passed",
                 "request_id": str(request_id),
+                "tenant_id": str(record.tenant_id) if record.tenant_id else None,
                 "model": record.model,
                 "blocked": sentinel_result.blocked,
                 "block_reason": sentinel_result.block_reason,
                 "flags": sentinel_result.flags,
                 "scores": sentinel_result.scores,
                 "latency_total": record.latency_total,
-            }
+            },
         )
     except Exception:
         logger.exception("failed to broadcast ws event id=%s", request_id)
@@ -100,7 +112,11 @@ async def _log_and_broadcast(
 # ── Route ────────────────────────────────────────────────────────────────────
 
 
-@router.post("/v1/chat/completions")
+@router.post(
+    "/v1/chat/completions",
+    response_model=None,
+    dependencies=[Depends(enforce_rate_limit)],
+)
 async def chat_completions(
     body: ChatCompletionRequest,
     http_request: Request,
@@ -122,8 +138,14 @@ async def chat_completions(
         config=config,
     )
 
-    # Pre-generate UUID so the response includes it before the background INSERT
-    request_id = uuid.uuid4()
+    # Reuse RequestIDMiddleware's ID (always a valid UUID — see middleware.py)
+    # so the HTTP response, the DB row, and the trace span all share one ID.
+    request_id = uuid.UUID(http_request.state.request_id)
+
+    current_span = trace.get_current_span()
+    current_span.set_attribute("sentinel.request_id", str(request_id))
+    if http_request.state.tenant_id is not None:
+        current_span.set_attribute("sentinel.tenant_id", str(http_request.state.tenant_id))
 
     # ── Input evaluator chain ────────────────────────────────────────────────
     input_results, blocked_by = await run_input_chain(
@@ -153,12 +175,14 @@ async def chat_completions(
             ),
             input_redacted=input_text,
             has_context=has_context,
+            tenant_id=http_request.state.tenant_id,
         )
         record.id = request_id
 
         background_tasks.add_task(
             _log_and_broadcast,
             http_request.app.state.db_pool,
+            http_request.app.state.redis,
             record,
             request_id,
             sentinel_result,
@@ -194,6 +218,7 @@ async def chat_completions(
     llm_client = get_llm_client(
         config, settings.openai_api_key, settings.anthropic_api_key, settings.gemini_api_key
     )
+    llm_provider = config.get("llm_backend", {}).get("provider", "unknown")
 
     # Strip context_documents and stream — SentinelLM extensions, not LLM API fields
     request_dict = body.model_dump(exclude={"context_documents", "stream"}, exclude_none=True)
@@ -212,6 +237,9 @@ async def chat_completions(
         async def _stream_response() -> AsyncGenerator[bytes, None]:
             accumulated_text = ""
             llm_start_inner = time.monotonic()
+            llm_span = tracer.start_span("sentinel.llm.call")
+            llm_span.set_attribute("sentinel.llm.provider", llm_provider)
+            llm_span.set_attribute("sentinel.llm.model", body.model)
 
             try:
                 async for chunk in llm_client.stream_chat(request_dict):
@@ -221,6 +249,12 @@ async def chat_completions(
                     except (KeyError, IndexError):
                         pass
             except Exception as exc:
+                latency_llm_error = int((time.monotonic() - llm_start_inner) * 1000)
+                observe_llm_call(llm_provider, body.model, latency_llm_error, errored=True)
+                alert_window.record_llm_call(errored=True)
+                llm_span.record_exception(exc)
+                llm_span.set_status(trace.StatusCode.ERROR)
+                llm_span.end()
                 logger.error("LLM streaming error: %s", exc)
                 err = json.dumps({"error": {"type": "llm_backend_error", "message": str(exc)}})
                 yield f"data: {err}\n\n".encode()
@@ -228,6 +262,9 @@ async def chat_completions(
                 return
 
             latency_llm_inner = int((time.monotonic() - llm_start_inner) * 1000)
+            observe_llm_call(llm_provider, body.model, latency_llm_inner, errored=False)
+            alert_window.record_llm_call(errored=False)
+            llm_span.end()
 
             payload.output_text = accumulated_text or None
             output_results = await run_output_chain(
@@ -246,14 +283,19 @@ async def chat_completions(
                 input_text=(
                     input_text if config.get("storage", {}).get("store_input_text", True) else None
                 ),
-                input_redacted=input_text,
+                input_redacted=pii_redacted_text or input_text,
                 has_context=has_context,
+                tenant_id=http_request.state.tenant_id,
             )
             record.id = request_id
 
             asyncio.ensure_future(
                 _log_and_broadcast(
-                    http_request.app.state.db_pool, record, request_id, sentinel_result
+                    http_request.app.state.db_pool,
+                    http_request.app.state.redis,
+                    record,
+                    request_id,
+                    sentinel_result,
                 )
             )
 
@@ -280,15 +322,25 @@ async def chat_completions(
 
     # ── Non-streaming path ───────────────────────────────────────────────────
     llm_start = time.monotonic()
-    try:
-        llm_response = await llm_client.chat(request_dict)
-    except Exception as exc:
-        logger.error("LLM backend error: %s", exc)
-        return JSONResponse(
-            status_code=502,
-            content={"error": {"type": "llm_backend_error", "message": str(exc)}},
-        )
+    with tracer.start_as_current_span("sentinel.llm.call") as llm_span:
+        llm_span.set_attribute("sentinel.llm.provider", llm_provider)
+        llm_span.set_attribute("sentinel.llm.model", body.model)
+        try:
+            llm_response = await llm_client.chat(request_dict)
+        except Exception as exc:
+            latency_llm_error = int((time.monotonic() - llm_start) * 1000)
+            observe_llm_call(llm_provider, body.model, latency_llm_error, errored=True)
+            alert_window.record_llm_call(errored=True)
+            llm_span.record_exception(exc)
+            llm_span.set_status(trace.StatusCode.ERROR)
+            logger.error("LLM backend error: %s", exc)
+            return JSONResponse(
+                status_code=502,
+                content={"error": {"type": "llm_backend_error", "message": str(exc)}},
+            )
     latency_llm = int((time.monotonic() - llm_start) * 1000)
+    observe_llm_call(llm_provider, body.model, latency_llm, errored=False)
+    alert_window.record_llm_call(errored=False)
 
     # Extract the assistant text for output evaluators
     output_text: str | None = None
@@ -313,14 +365,16 @@ async def chat_completions(
         model=body.model,
         input_hash=input_hash,
         input_text=input_text if config.get("storage", {}).get("store_input_text", True) else None,
-        input_redacted=input_text,  # Phase 1: no redaction (PII evaluator added in Phase 2)
+        input_redacted=pii_redacted_text or input_text,
         has_context=has_context,
+        tenant_id=http_request.state.tenant_id,
     )
     record.id = request_id
 
     background_tasks.add_task(
         _log_and_broadcast,
         http_request.app.state.db_pool,
+        http_request.app.state.redis,
         record,
         request_id,
         sentinel_result,

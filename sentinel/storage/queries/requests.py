@@ -85,6 +85,7 @@ def _row_to_dict(row: asyncpg.Record) -> dict[str, Any]:
 _INSERT_SQL = """
 INSERT INTO requests (
     id,
+    tenant_id,
     model,
     input_hash,
     input_text,
@@ -119,7 +120,7 @@ INSERT INTO requests (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
     $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
     $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-    $31
+    $31, $32
 )
 RETURNING id, created_at
 """
@@ -138,6 +139,7 @@ async def insert_request(pool: asyncpg.Pool, record: RequestRecord) -> RequestRe
         row = await conn.fetchrow(
             _INSERT_SQL,
             record.id,
+            record.tenant_id,
             record.model,
             record.input_hash,
             record.input_text,
@@ -176,6 +178,7 @@ async def insert_request(pool: asyncpg.Pool, record: RequestRecord) -> RequestRe
 
 async def get_scores(
     pool: asyncpg.Pool,
+    tenant_id: UUID,
     page: int = 1,
     limit: int = 50,
     flagged_only: bool = False,
@@ -183,13 +186,13 @@ async def get_scores(
     start_date: datetime | None = None,
     end_date: datetime | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Return paginated request records with optional filters.
+    """Return paginated request records for one tenant, with optional filters.
 
     Returns (items, total_count).
     """
-    conditions = ["TRUE"]
-    params: list[Any] = []
-    p = 1
+    conditions = ["tenant_id = $1"]
+    params: list[Any] = [tenant_id]
+    p = 2
 
     if start_date:
         conditions.append(f"created_at >= ${p}")
@@ -227,31 +230,36 @@ async def get_scores(
     return [_row_to_dict(r) for r in rows], total
 
 
-async def get_request_by_id(pool: asyncpg.Pool, request_id: UUID) -> dict[str, Any] | None:
-    """Return full detail for a single request, or None if not found."""
-    query = f"SELECT {_SCORE_COLS} FROM requests WHERE id = $1"
+async def get_request_by_id(
+    pool: asyncpg.Pool, request_id: UUID, tenant_id: UUID
+) -> dict[str, Any] | None:
+    """Return full detail for a single request owned by tenant_id, or None."""
+    query = f"SELECT {_SCORE_COLS} FROM requests WHERE id = $1 AND tenant_id = $2"
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(query, request_id)
+        row = await conn.fetchrow(query, request_id, tenant_id)
     return _row_to_dict(row) if row else None
 
 
-async def get_review_queue(pool: asyncpg.Pool, limit: int = 20) -> list[dict[str, Any]]:
-    """Return unreviewed flagged requests, oldest first (review queue order)."""
+async def get_review_queue(
+    pool: asyncpg.Pool, tenant_id: UUID, limit: int = 20
+) -> list[dict[str, Any]]:
+    """Return one tenant's unreviewed flagged requests, oldest first."""
     query = f"""
         SELECT {_SCORE_COLS}
         FROM requests
-        WHERE NOT reviewed AND ({_FLAG_COLS})
+        WHERE tenant_id = $1 AND NOT reviewed AND ({_FLAG_COLS})
         ORDER BY created_at ASC
-        LIMIT $1
+        LIMIT $2
     """
     async with pool.acquire() as conn:
-        rows = await conn.fetch(query, limit)
+        rows = await conn.fetch(query, tenant_id, limit)
     return [_row_to_dict(r) for r in rows]
 
 
 async def submit_review(
     pool: asyncpg.Pool,
     request_id: UUID,
+    tenant_id: UUID,
     label: str,
     note: str | None,
 ) -> bool:
@@ -259,11 +267,11 @@ async def submit_review(
     query = """
         UPDATE requests
         SET reviewed = TRUE,
-            review_label = $2,
-            reviewer_note = $3,
+            review_label = $3,
+            reviewer_note = $4,
             reviewed_at = NOW()
-        WHERE id = $1
+        WHERE id = $1 AND tenant_id = $2
     """
     async with pool.acquire() as conn:
-        result = await conn.execute(query, request_id, label, note)
+        result = await conn.execute(query, request_id, tenant_id, label, note)
     return result == "UPDATE 1"

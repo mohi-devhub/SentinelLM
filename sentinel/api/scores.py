@@ -37,6 +37,7 @@ async def scores(
     pool = request.app.state.db_pool
     items, total = await get_scores(
         pool,
+        request.state.tenant_id,
         page=page,
         limit=limit,
         flagged_only=flagged_only,
@@ -50,7 +51,7 @@ async def scores(
 @router.get("/v1/sentinel/scores/{request_id}")
 async def score_detail(request: Request, request_id: UUID) -> JSONResponse:
     pool = request.app.state.db_pool
-    record = await get_request_by_id(pool, request_id)
+    record = await get_request_by_id(pool, request_id, request.state.tenant_id)
     if record is None:
         return JSONResponse(status_code=404, content={"error": "not found"})
     return JSONResponse(content=record)

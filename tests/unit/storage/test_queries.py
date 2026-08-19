@@ -140,6 +140,9 @@ def test_row_to_dict_created_at_is_isoformat():
 # ── get_scores ────────────────────────────────────────────────────────────────
 
 
+_TENANT_ID = uuid.uuid4()
+
+
 @pytest.fixture
 def mock_pool():
     """asyncpg Pool mock with acquire() as an async context manager."""
@@ -161,7 +164,7 @@ async def test_get_scores_returns_list_and_total(mock_pool):
     conn.fetchval = AsyncMock(return_value=1)  # total count
     conn.fetch = AsyncMock(return_value=[row])
 
-    items, total = await get_scores(pool, page=1, limit=10)
+    items, total = await get_scores(pool, _TENANT_ID, page=1, limit=10)
 
     assert total == 1
     assert len(items) == 1
@@ -175,7 +178,7 @@ async def test_get_scores_flagged_only_filter(mock_pool):
     conn.fetchval = AsyncMock(return_value=0)
     conn.fetch = AsyncMock(return_value=[])
 
-    items, total = await get_scores(pool, flagged_only=True)
+    items, total = await get_scores(pool, _TENANT_ID, flagged_only=True)
 
     # Verify fetch was called (with the flag filter included in query)
     assert conn.fetch.called
@@ -191,7 +194,7 @@ async def test_get_scores_invalid_evaluator_ignored(mock_pool):
     conn.fetch = AsyncMock(return_value=[])
 
     # Should not raise; unknown evaluator is not interpolated into SQL
-    items, total = await get_scores(pool, evaluator="DROP TABLE requests; --")
+    items, total = await get_scores(pool, _TENANT_ID, evaluator="DROP TABLE requests; --")
     assert total == 0
 
 
@@ -206,7 +209,7 @@ async def test_get_request_by_id_found(mock_pool):
     conn.fetchrow = AsyncMock(return_value=row)
 
     request_id = uuid.uuid4()
-    result = await get_request_by_id(pool, request_id)
+    result = await get_request_by_id(pool, request_id, _TENANT_ID)
 
     assert result is not None
     assert result["model"] == "llama3.2"
@@ -219,7 +222,7 @@ async def test_get_request_by_id_not_found(mock_pool):
     pool, conn = mock_pool
     conn.fetchrow = AsyncMock(return_value=None)
 
-    result = await get_request_by_id(pool, uuid.uuid4())
+    result = await get_request_by_id(pool, uuid.uuid4(), _TENANT_ID)
     assert result is None
 
 
@@ -233,7 +236,7 @@ async def test_get_review_queue_returns_flagged_rows(mock_pool):
     row = _fake_row(flag_toxicity=True)
     conn.fetch = AsyncMock(return_value=[row])
 
-    items = await get_review_queue(pool, limit=10)
+    items = await get_review_queue(pool, _TENANT_ID, limit=10)
 
     assert len(items) == 1
     assert "toxicity" in items[0]["flags"]
@@ -245,7 +248,7 @@ async def test_get_review_queue_empty(mock_pool):
     pool, conn = mock_pool
     conn.fetch = AsyncMock(return_value=[])
 
-    items = await get_review_queue(pool)
+    items = await get_review_queue(pool, _TENANT_ID)
     assert items == []
 
 
@@ -258,7 +261,7 @@ async def test_submit_review_returns_true_on_success(mock_pool):
     pool, conn = mock_pool
     conn.execute = AsyncMock(return_value="UPDATE 1")
 
-    result = await submit_review(pool, uuid.uuid4(), "correct_flag", note=None)
+    result = await submit_review(pool, uuid.uuid4(), _TENANT_ID, "correct_flag", note=None)
     assert result is True
 
 
@@ -268,7 +271,7 @@ async def test_submit_review_returns_false_when_not_found(mock_pool):
     pool, conn = mock_pool
     conn.execute = AsyncMock(return_value="UPDATE 0")
 
-    result = await submit_review(pool, uuid.uuid4(), "false_positive", note=None)
+    result = await submit_review(pool, uuid.uuid4(), _TENANT_ID, "false_positive", note=None)
     assert result is False
 
 
@@ -278,7 +281,7 @@ async def test_submit_review_passes_note_to_query(mock_pool):
     pool, conn = mock_pool
     conn.execute = AsyncMock(return_value="UPDATE 1")
 
-    await submit_review(pool, uuid.uuid4(), "correct_flag", note="Looks right")
+    await submit_review(pool, uuid.uuid4(), _TENANT_ID, "correct_flag", note="Looks right")
 
     call_args = conn.execute.call_args
     assert "Looks right" in call_args.args
