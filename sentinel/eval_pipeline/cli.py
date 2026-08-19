@@ -29,6 +29,10 @@ app = typer.Typer(
 eval_app = typer.Typer(help="Eval pipeline commands.", no_args_is_help=True)
 app.add_typer(eval_app, name="eval")
 
+from sentinel.tenancy.cli import tenant_app  # noqa: E402
+
+app.add_typer(tenant_app, name="tenant")
+
 
 # ── eval run ──────────────────────────────────────────────────────────────────
 
@@ -66,6 +70,11 @@ def eval_run(
         "-c",
         help="Max concurrent requests sent to the server.",
     ),
+    tenant: str = typer.Option(
+        "default",
+        "--tenant",
+        help="Slug of the owning tenant (see `sentinel tenant list-tenants`).",
+    ),
     output: Path | None = typer.Option(
         None,
         "--output",
@@ -81,6 +90,7 @@ def eval_run(
             baseline=baseline,
             server=server,
             concurrency=concurrency,
+            tenant=tenant,
             output=output,
         )
     )
@@ -92,6 +102,7 @@ async def _async_eval_run(
     baseline: str | None,
     server: str,
     concurrency: int,
+    tenant: str,
     output: Path | None,
 ) -> None:
     from sentinel.eval_pipeline.reporter import (  # noqa: PLC0415
@@ -110,6 +121,7 @@ async def _async_eval_run(
         insert_eval_result,
         insert_eval_run,
     )
+    from sentinel.tenancy.queries import get_tenant_by_slug  # noqa: PLC0415
 
     settings = get_settings()
 
@@ -126,8 +138,16 @@ async def _async_eval_run(
     # ── Connect to DB ─────────────────────────────────────────────────────────
     pool = await create_pool(settings.database_url)
 
+    # ── Resolve tenant ───────────────────────────────────────────────────────
+    tenant_row = await get_tenant_by_slug(pool, tenant)
+    if tenant_row is None:
+        console.print(f"[red]No tenant with slug '[bold]{tenant}[/bold]'.[/red]")
+        await pool.close()
+        raise typer.Exit(1)
+    tenant_id = tenant_row["id"]
+
     # ── Validate label uniqueness ─────────────────────────────────────────────
-    existing = await get_eval_run_by_label(pool, label)
+    existing = await get_eval_run_by_label(pool, label, tenant_id)
     if existing:
         console.print(
             f"[red]Eval run label '[bold]{label}[/bold]' already exists "
@@ -139,7 +159,7 @@ async def _async_eval_run(
     # ── Resolve baseline ──────────────────────────────────────────────────────
     baseline_run = None
     if baseline:
-        baseline_run = await get_eval_run_by_label(pool, baseline)
+        baseline_run = await get_eval_run_by_label(pool, baseline, tenant_id)
         if not baseline_run:
             console.print(
                 f"[yellow]Warning: baseline run '[bold]{baseline}[/bold]' not found. "
@@ -158,6 +178,7 @@ async def _async_eval_run(
     # ── Create eval_run row ───────────────────────────────────────────────────
     eval_run_record = await insert_eval_run(
         pool,
+        tenant_id=tenant_id,
         label=label,
         dataset_path=str(dataset),
         baseline_run_id=baseline_run.id if baseline_run else None,
@@ -199,7 +220,7 @@ async def _async_eval_run(
                 on_progress=on_progress,
             )
         except Exception as exc:
-            await fail_eval_run(pool, eval_run_record.id)
+            await fail_eval_run(pool, eval_run_record.id, tenant_id)
             console.print(f"[red]Eval run failed: {exc}[/red]")
             await pool.close()
             raise typer.Exit(1)
@@ -237,6 +258,7 @@ async def _async_eval_run(
     await complete_eval_run(
         pool=pool,
         run_id=eval_run_record.id,
+        tenant_id=tenant_id,
         record_count=len(results),
         summary=summary,
         regression=regression,
@@ -311,6 +333,11 @@ def eval_offline(
         "-c",
         help="Max concurrent evaluations (no network bottleneck — higher than live mode).",
     ),
+    tenant: str = typer.Option(
+        "default",
+        "--tenant",
+        help="Slug of the owning tenant (see `sentinel tenant list-tenants`).",
+    ),
     output: Optional[Path] = typer.Option(
         None,
         "--output",
@@ -326,6 +353,7 @@ def eval_offline(
             baseline=baseline,
             config_path=config_path,
             concurrency=concurrency,
+            tenant=tenant,
             output=output,
         )
     )
@@ -337,6 +365,7 @@ async def _async_offline_run(
     baseline: str | None,
     config_path: Path | None,
     concurrency: int,
+    tenant: str,
     output: Path | None,
 ) -> None:
     from sentinel.eval_pipeline.reporter import (  # noqa: PLC0415
@@ -360,6 +389,7 @@ async def _async_offline_run(
         insert_eval_result,
         insert_eval_run,
     )
+    from sentinel.tenancy.queries import get_tenant_by_slug  # noqa: PLC0415
 
     settings = get_settings()
 
@@ -384,8 +414,16 @@ async def _async_offline_run(
     # ── Connect to DB ─────────────────────────────────────────────────────────
     pool = await create_pool(settings.database_url)
 
+    # ── Resolve tenant ───────────────────────────────────────────────────────
+    tenant_row = await get_tenant_by_slug(pool, tenant)
+    if tenant_row is None:
+        console.print(f"[red]No tenant with slug '[bold]{tenant}[/bold]'.[/red]")
+        await pool.close()
+        raise typer.Exit(1)
+    tenant_id = tenant_row["id"]
+
     # ── Validate label uniqueness ─────────────────────────────────────────────
-    existing = await get_eval_run_by_label(pool, label)
+    existing = await get_eval_run_by_label(pool, label, tenant_id)
     if existing:
         console.print(
             f"[red]Eval run label '[bold]{label}[/bold]' already exists "
@@ -397,7 +435,7 @@ async def _async_offline_run(
     # ── Resolve baseline ──────────────────────────────────────────────────────
     baseline_run = None
     if baseline:
-        baseline_run = await get_eval_run_by_label(pool, baseline)
+        baseline_run = await get_eval_run_by_label(pool, baseline, tenant_id)
         if not baseline_run:
             console.print(
                 f"[yellow]Warning: baseline '[bold]{baseline}[/bold]' not found. "
@@ -416,6 +454,7 @@ async def _async_offline_run(
     # ── Create eval_run row ───────────────────────────────────────────────────
     eval_run_record = await insert_eval_run(
         pool,
+        tenant_id=tenant_id,
         label=label,
         dataset_path=str(dataset),
         baseline_run_id=baseline_run.id if baseline_run else None,
@@ -427,7 +466,7 @@ async def _async_offline_run(
     try:
         engine = OfflineEvaluationEngine(config)
     except Exception as exc:
-        await fail_eval_run(pool, eval_run_record.id)
+        await fail_eval_run(pool, eval_run_record.id, tenant_id)
         console.print(f"[red]Failed to load evaluators: {exc}[/red]")
         await pool.close()
         raise typer.Exit(1)
@@ -466,7 +505,7 @@ async def _async_offline_run(
                 on_progress=on_progress,
             )
         except Exception as exc:
-            await fail_eval_run(pool, eval_run_record.id)
+            await fail_eval_run(pool, eval_run_record.id, tenant_id)
             console.print(f"[red]Offline eval failed: {exc}[/red]")
             await pool.close()
             raise typer.Exit(1)
@@ -505,7 +544,7 @@ async def _async_offline_run(
 
     if baseline_run and baseline_run.summary_json:
         # Fetch per-record scores for statistical comparison
-        baseline_scores_by_ev = await get_offline_run_scores(pool, baseline_run.id)
+        baseline_scores_by_ev = await get_offline_run_scores(pool, baseline_run.id, tenant_id)
 
         # Build current scores dict from run_results
         current_scores_by_ev: dict[str, list[float]] = {}
@@ -548,6 +587,7 @@ async def _async_offline_run(
     await complete_offline_eval_run(
         pool=pool,
         run_id=eval_run_record.id,
+        tenant_id=tenant_id,
         record_count=len(run_results),
         summary=summary,
         regression=legacy_regression,
@@ -599,21 +639,32 @@ async def _async_offline_run(
 
 
 @eval_app.command("list")
-def eval_list() -> None:
+def eval_list(
+    tenant: str = typer.Option(
+        "default",
+        "--tenant",
+        help="Slug of the owning tenant (see `sentinel tenant list-tenants`).",
+    ),
+) -> None:
     """List past eval runs stored in the database."""
-    asyncio.run(_async_list())
+    asyncio.run(_async_list(tenant))
 
 
-async def _async_list() -> None:
+async def _async_list(tenant: str) -> None:
     from sentinel.eval_pipeline.reporter import print_runs_table  # noqa: PLC0415
     from sentinel.settings import get_settings  # noqa: PLC0415
     from sentinel.storage.database import create_pool  # noqa: PLC0415
     from sentinel.storage.queries.eval_runs import list_eval_runs  # noqa: PLC0415
+    from sentinel.tenancy.queries import get_tenant_by_slug  # noqa: PLC0415
 
     settings = get_settings()
     pool = await create_pool(settings.database_url)
     try:
-        runs = await list_eval_runs(pool)
+        tenant_row = await get_tenant_by_slug(pool, tenant)
+        if tenant_row is None:
+            console.print(f"[red]No tenant with slug '[bold]{tenant}[/bold]'.[/red]")
+            raise typer.Exit(1)
+        runs = await list_eval_runs(pool, tenant_row["id"])
     finally:
         await pool.close()
 
