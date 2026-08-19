@@ -77,6 +77,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
+      - name: Download spaCy model (matches evaluators.pii.spacy_model)
+        run: python -m spacy download en_core_web_sm
+
       - name: Apply DB schema
         run: |
           PGPASSWORD=sentinel psql -h localhost -U sentinel -d sentinellm \
@@ -89,6 +92,9 @@ jobs:
           --cov-report=term-missing
           --cov-fail-under=60
           -v
+
+      - name: Run evaluator-loading regression test (real, unmocked models)
+        run: pytest tests/integration/test_evaluator_loading.py -v
 
   docker-build:
     name: Docker build check
