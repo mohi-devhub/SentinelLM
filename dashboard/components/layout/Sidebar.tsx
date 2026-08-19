@@ -2,14 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart2, Eye, FlaskConical, KeyRound, LayoutDashboard, Radio, Shield } from "lucide-react";
+import {
+  BarChart2,
+  Eye,
+  FlaskConical,
+  KeyRound,
+  LayoutDashboard,
+  Radio,
+  Shield,
+  Terminal,
+} from "lucide-react";
 import { clearApiKey } from "@/lib/auth";
 
 const NAV = [
-  { href: "/dashboard",        label: "Overview",   icon: LayoutDashboard },
-  { href: "/dashboard/feed",   label: "Live Feed",  icon: Radio },
-  { href: "/dashboard/review", label: "Review",     icon: Eye },
-  { href: "/dashboard/eval",   label: "Eval Runs",  icon: FlaskConical },
+  { href: "/dashboard",            label: "Overview",   icon: LayoutDashboard },
+  { href: "/dashboard/playground", label: "Playground", icon: Terminal },
+  { href: "/dashboard/feed",       label: "Live Feed",  icon: Radio },
+  { href: "/dashboard/review",     label: "Review",     icon: Eye },
+  { href: "/dashboard/eval",       label: "Eval Runs",  icon: FlaskConical },
 ];
 
 export function Sidebar() {

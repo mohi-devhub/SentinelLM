@@ -2,6 +2,9 @@ import type {
   AggregateMetricsResponse,
   EvalRunDetail,
   EvalRunSummary,
+  PlaygroundBlockError,
+  PlaygroundRequestBody,
+  PlaygroundSuccessResponse,
   RequestDetail,
   ReviewLabel,
   ScoreHistoryResponse,
@@ -37,6 +40,29 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`PATCH ${path} → ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
+export class SentinelBlockError extends Error {
+  constructor(public block: PlaygroundBlockError["error"]) {
+    super(block.message);
+  }
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    // sentinel_block (400) has a structured body worth surfacing distinctly
+    const data = await res.json().catch(() => null);
+    if (res.status === 400 && data?.error?.type === "sentinel_block") {
+      throw new SentinelBlockError(data.error);
+    }
+    throw new Error(`POST ${path} → ${res.status}`);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -97,4 +123,10 @@ export function fetchEvalRuns(): Promise<EvalRunSummary[]> {
 
 export function fetchEvalRun(runId: string): Promise<EvalRunDetail> {
   return get(`/v1/sentinel/eval/${runId}`);
+}
+
+// ── Playground ────────────────────────────────────────────────────────────────
+
+export function runPlayground(body: PlaygroundRequestBody): Promise<PlaygroundSuccessResponse> {
+  return post("/v1/chat/completions", body);
 }

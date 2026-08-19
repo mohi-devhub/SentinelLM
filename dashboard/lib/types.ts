@@ -116,6 +116,40 @@ export interface EvalRunDetail extends EvalRunSummary {
 
 export type ReviewLabel = "correct_flag" | "false_positive" | "false_negative";
 
+export interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+export interface PlaygroundRequestBody {
+  model: string;
+  messages: ChatMessage[];
+  context_documents?: string[];
+}
+
+export interface PlaygroundSentinelMeta {
+  request_id: string;
+  scores: Scores;
+  flags: string[];
+  latency_ms: Latencies;
+  pii_redacted_text: string | null;
+}
+
+export interface PlaygroundSuccessResponse {
+  choices: { index: number; message: ChatMessage; finish_reason: string }[];
+  sentinel: PlaygroundSentinelMeta;
+}
+
+export interface PlaygroundBlockError {
+  error: {
+    type: "sentinel_block";
+    code: string;
+    score: number;
+    threshold: number;
+    message: string;
+  };
+}
+
 export interface SentinelEvent {
   event_type: "request_passed" | "request_blocked";
   request_id: string;
