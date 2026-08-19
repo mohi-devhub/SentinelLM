@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING
 
 from sentinel.evaluators.input.pii import PIIEvaluator
@@ -31,21 +32,57 @@ EVALUATOR_REGISTRY: dict[str, type[BaseEvaluator]] = {
 }
 
 
-def load_evaluators(config: dict) -> list[BaseEvaluator]:
-    """Instantiate and return all enabled evaluators in registry order.
+def _prewarm_imports() -> None:
+    """Import heavy ML libraries in the main thread before parallel loading.
 
-    Only evaluators listed as enabled: true in config.yaml are instantiated.
-    Unknown registry keys for disabled evaluators are silently skipped.
+    Python's import lock is per-module. If multiple threads race to import the
+    same library for the first time, they hit a circular-import deadlock.
+    Importing here populates sys.modules so threads skip the import entirely.
     """
-    evaluators: list[BaseEvaluator] = []
+    try:
+        import transformers  # noqa: F401
+    except Exception:
+        pass
+    try:
+        import sentence_transformers  # noqa: F401
+    except Exception:
+        pass
+    try:
+        import detoxify  # noqa: F401
+    except Exception:
+        pass
+    try:
+        import presidio_analyzer  # noqa: F401
+    except Exception:
+        pass
+
+
+def load_evaluators(config: dict) -> list[BaseEvaluator]:
+    """Instantiate all enabled evaluators in parallel, return in registry order."""
     evaluator_cfg: dict = config.get("evaluators", {})
 
-    for name, cls in EVALUATOR_REGISTRY.items():
-        ev_config = evaluator_cfg.get(name, {})
-        if not ev_config.get("enabled", False):
-            logger.debug("evaluator %s disabled — skipping", name)
-            continue
-        logger.info("loading evaluator: %s", name)
-        evaluators.append(cls(config))
+    enabled: list[tuple[str, type[BaseEvaluator]]] = [
+        (name, cls)
+        for name, cls in EVALUATOR_REGISTRY.items()
+        if evaluator_cfg.get(name, {}).get("enabled", False)
+    ]
 
-    return evaluators
+    if not enabled:
+        return []
+
+    _prewarm_imports()
+
+    results: dict[str, BaseEvaluator] = {}
+
+    def _load(name: str, cls: type[BaseEvaluator]) -> tuple[str, BaseEvaluator]:
+        logger.info("loading evaluator: %s", name)
+        return name, cls(config)
+
+    with ThreadPoolExecutor(max_workers=len(enabled)) as pool:
+        futures = {pool.submit(_load, name, cls): name for name, cls in enabled}
+        for future in as_completed(futures):
+            name, ev = future.result()
+            results[name] = ev
+
+    # Return in original registry order
+    return [results[name] for name, _ in enabled]
