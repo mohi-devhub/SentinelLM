@@ -1,0 +1,106 @@
+# Render Blueprint — deploys SentinelLM's full stack: the FastAPI proxy, the
+# Next.js dashboard, a managed Postgres database, and a Redis-compatible Key
+# Value store (cache + rate limiting + cross-replica WebSocket fanout).
+#
+# Deploy: in the Render Dashboard, New → Blueprint → connect this repo.
+# Render reads this file from the repo root automatically. During Blueprint
+# creation you'll be prompted for every `sync: false` value below — have your
+# LLM provider API key and a value for SENTINEL_API_KEY ready.
+#
+# Two values further down (NEXT_PUBLIC_API_URL / NEXT_PUBLIC_WS_URL, and
+# SENTINEL_CORS_ORIGINS) assume the service names below are available and
+# therefore resolve to https://sentinellm-api.onrender.com and
+# https://sentinellm-dashboard.onrender.com. If you rename a service, or
+# either default name is already taken elsewhere on Render, update the other
+# service's matching env var to the actual assigned URL after first deploy.
+
+databases:
+  - name: sentinellm-db
+    databaseName: sentinellm
+    plan: basic-256mb # smallest paid tier — check the Dashboard for current free-tier eligibility
+    postgresMajorVersion: "15"
+    region: oregon
+
+services:
+  # ── Redis-compatible cache / rate-limit / WebSocket fanout backend ────────
+  - type: keyvalue
+    name: sentinellm-redis
+    plan: free
+    region: oregon
+    ipAllowList: [] # empty = only other services in this Render account can reach it
+    maxmemoryPolicy: allkeys-lru # fine for us — cache entries carry TTLs, rate-limit
+    # counters are short-lived, and pub/sub messages aren't persisted anyway
+    persistenceMode: "off" # nothing we store here needs to survive a restart
+
+  # ── API — FastAPI proxy + 7-evaluator chain ────────────────────────────────
+  - type: web
+    name: sentinellm-api
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile.api
+    dockerContext: .
+    healthCheckPath: /health
+    region: oregon
+    plan: standard # torch + transformers + detoxify + sentence-transformers need
+    # real memory — the 512MB starter plan is not enough
+    autoDeployTrigger: commit
+    # Multiple replicas are safe: the WebSocket feed uses Redis pub/sub fanout
+    # (sentinel/ws/broadcaster.py) specifically so every replica's dashboard
+    # connections stay correct regardless of which replica scored a request.
+    # No disk is attached here on purpose — Render won't scale a service with
+    # a disk attached — so the tradeoff is that ML model weights re-download
+    # on every cold start instead of persisting. Bake them into the Docker
+    # image at build time instead if that cost matters more to you than
+    # horizontal scaling.
+    # numInstances: 2
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sentinellm-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: sentinellm-redis
+          property: connectionString
+      - key: SENTINEL_CONFIG_PATH
+        value: config.yaml
+      - key: SENTINEL_ENV
+        value: production
+      - key: SENTINEL_API_KEY
+        sync: false # required in production — see README § Security settings
+      - key: SENTINEL_CORS_ORIGINS
+        value: https://sentinellm-dashboard.onrender.com
+      # Set only the ONE matching llm_backend.provider in config.yaml —
+      # leave the other two blank in the Dashboard.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      # Observability — both optional; the app runs with a no-op tracer and
+      # log-only alerting when these are left unset. Uncomment and fill in
+      # via the Dashboard to point at your own OTLP backend / Slack webhook.
+      # - key: OTEL_EXPORTER_OTLP_ENDPOINT
+      #   sync: false
+      # - key: SENTINEL_ALERT_WEBHOOK_URL
+      #   sync: false
+
+  # ── Dashboard — Next.js ─────────────────────────────────────────────────────
+  - type: web
+    name: sentinellm-dashboard
+    runtime: docker
+    dockerfilePath: ./docker/Dockerfile.dashboard
+    dockerContext: ./dashboard
+    region: oregon
+    plan: starter
+    autoDeployTrigger: commit
+    envVars:
+      # Next.js bakes NEXT_PUBLIC_* vars into the client bundle at build time
+      # (see docker/Dockerfile.dashboard) — Render automatically passes a
+      # Docker-runtime service's envVars into the build step as build args,
+      # so these apply correctly with no extra wiring.
+      - key: NEXT_PUBLIC_API_URL
+        value: https://sentinellm-api.onrender.com
+      - key: NEXT_PUBLIC_WS_URL
+        value: wss://sentinellm-api.onrender.com

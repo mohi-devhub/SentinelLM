@@ -6,6 +6,15 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
 
+# Next.js inlines NEXT_PUBLIC_* vars into the client bundle at build time —
+# they must be ARGs available during `npm run build`, not just runtime env.
+# docker-compose passes these via `build.args`; Render auto-translates the
+# service's envVars into build args for Docker-runtime services.
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ARG NEXT_PUBLIC_WS_URL=ws://localhost:8000
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+
 # Copy source and build
 COPY . .
 RUN npm run build
