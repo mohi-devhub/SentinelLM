@@ -4,6 +4,7 @@ CLAUDE.md
 
 # ── Docs (internal only) ──────────────────────────────────────────────────────
 docs/
+PLAN-V2.md
 
 # ── Python ────────────────────────────────────────────────────────────────────
 .venv/
@@ -31,6 +32,7 @@ htmlcov/
 dashboard/node_modules/
 dashboard/.next/
 dashboard/.env.local
+dashboard/tsconfig.tsbuildinfo
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 docker/secrets/
