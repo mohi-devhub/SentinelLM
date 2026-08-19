@@ -39,8 +39,10 @@ Seven evaluators across two layers. Input evaluators run before the LLM call and
 | `topic_guardrail` | input | block | `all-MiniLM-L6-v2` (cosine sim) |
 | `toxicity` | output | flag | Detoxify |
 | `relevance` | output | flag | `all-MiniLM-L6-v2` (cosine sim) |
-| `hallucination` | output | flag | `cross-encoder/nli-deberta-v3-base` |
-| `faithfulness` | output | flag | `cross-encoder/nli-deberta-v3-base` |
+| `hallucination` | output | flag | `vectara/hallucination_evaluation_model`¹ |
+| `faithfulness` | output | flag | `vectara/hallucination_evaluation_model`¹ |
+
+¹ Purpose-built factual-consistency model, measured **AUC 0.78** vs **0.59** for the generic NLI classifier it replaced — see [Evaluator Accuracy](#evaluator-accuracy). Runs via `trust_remote_code=True` (executes vendor code from the model repo); set `backend: nli` in `config.yaml` to use the original `cross-encoder/nli-deberta-v3-base` path instead if that's not acceptable in your environment.
 
 All evaluators are **fail-open** — a model crash or timeout never blocks a legitimate request.
 
@@ -386,6 +388,31 @@ Locust's synthetic load is useful, but it doesn't tell you how the system behave
 **A concrete finding, not a hypothetical one**: building realistic test prompts for this run surfaced a real false-positive pattern in the `prompt_injection` evaluator. Holding topic and style constant and only changing length, a 15-word benign business message scored `0.0009` (passes cleanly), and the same message extended by one more clause to ~30 words scored `0.991` — blocked, on content that is not an attack. Two related patterns were isolated the same way: **exact sentence repetition** scores ~`0.96` regardless of content (plausibly intentional — repetition is a real jailbreak technique — but a false-positive risk on any naturally repetitive legitimate text), and **imperative "Write a \[thing\]..." phrasing** scores ~`0.996` even for entirely benign requests, which is concerning specifically because that phrasing is the core use case for any AI copywriting or support-drafting product. See the [Configuration](#evaluator-thresholds) note above — the default `0.80` threshold has not been recalibrated against this behavior, and these three reproducible examples are a ready-made starting test set for whoever does that work.
 
 **Scope of what this proved, honestly**: single replica on one machine (no horizontal-scaling or multi-replica WS-fanout test yet); `hallucination`/`faithfulness` were disabled for this run (an unrelated local torch/transformers version mismatch on the test machine, not a SentinelLM bug); input text was deliberately kept short to stay clear of the false-positive cliff above, so these latency numbers reflect clean pass-through behavior rather than the trace's much larger real-world context sizes; 250 of the trace's 19,366 rows were replayed, from the start of the file; every request resolved to the same single tenant; and the whole run lasted 72 seconds, not long enough to surface slow leaks or connection-pool exhaustion.
+
+## Evaluator Accuracy
+
+Real-trace load testing proves the pipeline doesn't fall over under real traffic. It says nothing about whether `hallucination` and `faithfulness` actually catch hallucinations. To answer that, both were benchmarked against [HaluEval](https://github.com/RUCAIBox/HaluEval) — a public QA dataset where each of 150 questions has both a correct answer and a deliberately hallucinated one (300 labeled cases total). Each answer was scored against its source passage and checked against the known label.
+
+**Starting point was weak.** The original default, a generic NLI entailment classifier (`cross-encoder/nli-deberta-v3-base`), scored **AUC 0.59** on this task — barely better than a coin flip. `hallucination` and `faithfulness` measure identically here by construction: both read the same context/output pair through the same kind of model, just flagging in opposite directions, so whatever's true of one's accuracy is true of the other's.
+
+**One fix was tried and rejected before finding one that worked:**
+- **A bigger model of the same kind** (`cross-encoder/nli-deberta-v3-large`) — barely moved the needle (AUC 0.60) and made `faithfulness` measurably worse (AUC dropped to 0.41). This ruled out "model too small" and pointed at "wrong kind of model for this job" — a generic entailment classifier isn't trained for factual-consistency checking specifically.
+- **A purpose-built factual-consistency model** (`vectara/hallucination_evaluation_model`) — trained specifically to score whether a claim is supported by a source document, not general entailment. This is now the shipped default.
+
+| | Generic NLI (old default) | Larger NLI (rejected) | Purpose-built (new default) |
+|---|---|---|---|
+| AUC | 0.59 | 0.60 | **0.78** |
+| Accuracy @ threshold 0.50 | ~59% | ~63% | **76.3%** |
+| Precision | — | — | **83.2%** |
+| Recall | — | — | **66.0%** |
+
+**What this proves, in simple terms**: the old default was barely distinguishing hallucinated answers from correct ones — its accuracy was close to guessing. The new default correctly classifies roughly 3 out of 4 answers, and when it does flag something as hallucinated, it's right about 83% of the time. It still misses about a third of real hallucinations (66% recall) — this is a real, measured ceiling, not a claim of solved.
+
+**Trade-off, disclosed**: the new default model loads via `trust_remote_code=True` — it runs vendor-supplied Python code from the model's HuggingFace repo, not just weights. `config.yaml` documents a `backend: nli` fallback to the original model for environments where that's not acceptable, at the cost of the accuracy above.
+
+**A real bug this work surfaced and fixed**: verifying the new model live (not just in a benchmark script) turned up a genuine concurrency bug — SentinelLM loads all evaluators in parallel threads at startup, and PyTorch's model-loading path turned out not to be safe to run concurrently across threads. It sometimes crashed startup outright, and sometimes loaded "successfully" while silently producing `null` scores with no error logged, depending on thread timing. Fixed by serializing the model-instantiation step across evaluators (`sentinel/evaluators/registry.py`); confirmed with repeated full-startup reproductions plus live requests against a running server, zero recurrence after the fix. Evaluator loading is still parallel everywhere else (imports, config), so startup time is unaffected.
+
+**Scope of what this proved, honestly**: HaluEval is short-context QA — it doesn't cover long-document RAG, multi-turn conversation grounding, or adversarial hallucination attempts; 150 records is enough to be confident the two models are meaningfully different, not enough to pin the accuracy number to the decimal; and this measures the evaluator's detection quality in isolation, not its effect on the live pipeline's end-to-end block/flag rate under real traffic (that's what [Real-Trace Load Testing](#real-trace-load-testing) above is for, and it predates this fix).
 
 ## License
 
