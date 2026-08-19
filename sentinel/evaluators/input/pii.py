@@ -8,8 +8,14 @@ Detects personally identifiable information in user input. Supports two actions:
 Score = max Presidio confidence across all entities that meet the threshold.
 A score of 0.0 means no PII was detected above the confidence threshold.
 
-spaCy model must be downloaded before first use:
-    python -m spacy download en_core_web_lg
+spaCy model must be downloaded before first use, matching evaluators.pii.spacy_model
+in config.yaml (default en_core_web_sm — the model docker/Dockerfile.api installs):
+    python -m spacy download en_core_web_sm
+
+Presidio's AnalyzerEngine() defaults to en_core_web_lg when built with no explicit
+NlpEngineProvider — that default does NOT match the model shipped in the Docker
+image, so this evaluator always builds an explicit NlpEngineProvider pinned to
+the configured spacy_model instead of relying on Presidio's default.
 """
 
 from __future__ import annotations
@@ -18,11 +24,14 @@ from sentinel.evaluators.base import BaseEvaluator, EvalPayload, run_in_executor
 
 
 class PIIEvaluator(BaseEvaluator):
-    """Detects PII in user input using Microsoft Presidio + spaCy en_core_web_lg.
+    """Detects PII in user input using Microsoft Presidio + a configurable spaCy model.
 
     Config keys (under evaluators.pii in config.yaml):
-        threshold (float): Minimum Presidio confidence to count an entity. Default 0.5.
-        action (str):      'redact' | 'block'. Default 'block'.
+        threshold (float):   Minimum Presidio confidence to count an entity. Default 0.5.
+        action (str):        'redact' | 'block'. Default 'block'.
+        spacy_model (str):   spaCy model name Presidio's NLP engine loads. Default
+                              'en_core_web_sm' — must match a model actually installed
+                              in the runtime environment (see docker/Dockerfile.api).
     """
 
     name = "pii"
@@ -53,9 +62,17 @@ class PIIEvaluator(BaseEvaluator):
 
     def _load_model(self) -> None:
         from presidio_analyzer import AnalyzerEngine  # noqa: PLC0415
+        from presidio_analyzer.nlp_engine import NlpEngineProvider  # noqa: PLC0415
         from presidio_anonymizer import AnonymizerEngine  # noqa: PLC0415
 
-        self._analyzer = AnalyzerEngine()
+        spacy_model: str = self.config.get("spacy_model", "en_core_web_sm")
+        nlp_configuration = {
+            "nlp_engine_name": "spacy",
+            "models": [{"lang_code": "en", "model_name": spacy_model}],
+        }
+        nlp_engine = NlpEngineProvider(nlp_configuration=nlp_configuration).create_engine()
+
+        self._analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
         self._anonymizer = AnonymizerEngine()
         # Satisfy BaseEvaluator._model convention (used by tests)
         self._model = self._analyzer

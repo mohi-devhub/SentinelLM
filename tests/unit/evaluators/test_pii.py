@@ -1,6 +1,7 @@
 """Unit tests for PIIEvaluator.
 
-All tests mock presidio_analyzer and presidio_anonymizer — no real models loaded.
+All tests mock presidio_analyzer (including its nlp_engine submodule) and
+presidio_anonymizer — no real models loaded.
 """
 
 from __future__ import annotations
@@ -60,9 +61,20 @@ def _make_evaluator(config: dict, analyzer_results: list[Any], anonymized_text: 
     mock_anonymizer_module = MagicMock()
     mock_anonymizer_module.AnonymizerEngine.return_value = mock_anonymizer
 
+    # NlpEngineProvider(nlp_configuration=...).create_engine() must resolve too —
+    # _load_model builds an explicit NLP engine rather than relying on Presidio's
+    # own default (which is en_core_web_lg, not what the Docker image installs).
+    mock_nlp_engine_module = MagicMock()
+    mock_nlp_engine_provider_cls = mock_nlp_engine_module.NlpEngineProvider
+    mock_nlp_engine_provider_cls.return_value.create_engine.return_value = MagicMock(
+        name="fake_nlp_engine"
+    )
+
     original_pa = sys.modules.get("presidio_analyzer")
+    original_pa_nlp = sys.modules.get("presidio_analyzer.nlp_engine")
     original_pan = sys.modules.get("presidio_anonymizer")
     sys.modules["presidio_analyzer"] = mock_analyzer_module
+    sys.modules["presidio_analyzer.nlp_engine"] = mock_nlp_engine_module
     sys.modules["presidio_anonymizer"] = mock_anonymizer_module
     try:
         # Force re-import with mocked modules
@@ -74,12 +86,17 @@ def _make_evaluator(config: dict, analyzer_results: list[Any], anonymized_text: 
         # Expose the mocks so tests can inspect calls
         ev._analyzer = mock_analyzer
         ev._anonymizer = mock_anonymizer
+        ev._nlp_engine_provider_cls = mock_nlp_engine_provider_cls
         return ev
     finally:
         if original_pa is None:
             sys.modules.pop("presidio_analyzer", None)
         else:
             sys.modules["presidio_analyzer"] = original_pa
+        if original_pa_nlp is None:
+            sys.modules.pop("presidio_analyzer.nlp_engine", None)
+        else:
+            sys.modules["presidio_analyzer.nlp_engine"] = original_pa_nlp
         if original_pan is None:
             sys.modules.pop("presidio_anonymizer", None)
         else:
@@ -94,6 +111,53 @@ def test_evaluator_class_attributes():
     assert ev.name == "pii"
     assert ev.runs_on == "input"
     assert ev.flag_direction == "above"
+
+
+# ── Tests: spaCy model wiring ─────────────────────────────────────────────────
+#
+# Regression coverage for a bug that shipped silently: PIIEvaluator used to call
+# AnalyzerEngine() with no arguments, which makes Presidio fall back to its own
+# default NLP config (en_core_web_lg) — a model docker/Dockerfile.api never
+# installs (it installs en_core_web_sm). The evaluator now builds an explicit
+# NlpEngineProvider pinned to config['spacy_model'] so the loaded model always
+# matches what's actually on disk, and these tests pin that contract down so a
+# future refactor can't silently reintroduce the mismatch.
+
+
+def test_defaults_to_docker_installed_spacy_model():
+    """With no spacy_model configured, the NLP engine must target en_core_web_sm —
+    the model actually installed by docker/Dockerfile.api — not Presidio's own
+    default of en_core_web_lg."""
+    ev = _make_evaluator(MOCK_CONFIG, [])
+
+    ev._nlp_engine_provider_cls.assert_called_once_with(
+        nlp_configuration={
+            "nlp_engine_name": "spacy",
+            "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],
+        }
+    )
+
+
+def test_respects_configured_spacy_model():
+    """A deployment that has installed en_core_web_lg can opt into it via config."""
+    config = {
+        "evaluators": {
+            "pii": {
+                "enabled": True,
+                "threshold": 0.5,
+                "action": "block",
+                "spacy_model": "en_core_web_lg",
+            }
+        }
+    }
+    ev = _make_evaluator(config, [])
+
+    ev._nlp_engine_provider_cls.assert_called_once_with(
+        nlp_configuration={
+            "nlp_engine_name": "spacy",
+            "models": [{"lang_code": "en", "model_name": "en_core_web_lg"}],
+        }
+    )
 
 
 # ── Tests: no PII detected ────────────────────────────────────────────────────
