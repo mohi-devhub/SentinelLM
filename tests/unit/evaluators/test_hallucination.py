@@ -18,6 +18,7 @@ MOCK_CONFIG_HALLUCINATION = {
         "hallucination": {
             "enabled": True,
             "threshold": 0.70,
+            "backend": "nli",  # default is 'consistency' — see test_consistency_backend.py
             "model": "cross-encoder/nli-deberta-v3-base",
             "device": "cpu",
         }
@@ -29,6 +30,7 @@ MOCK_CONFIG_FAITHFULNESS = {
         "faithfulness": {
             "enabled": True,
             "threshold": 0.70,
+            "backend": "nli",
             "model": "cross-encoder/nli-deberta-v3-base",
             "device": "cpu",
         }
