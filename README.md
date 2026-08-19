@@ -266,6 +266,57 @@ sentinel eval run \
 
 The CLI prints a scorecard table and exits non-zero if any metric regresses.
 
+## Multi-Tenancy
+
+SentinelLM supports real, isolated multi-tenancy: separate tenants get separate hashed API keys, and every request, score, cache entry, rate-limit bucket, and WebSocket event is scoped to the owning tenant — one tenant can never see another's data.
+
+**Existing single-tenant deployments are unaffected.** If you only ever set `SENTINEL_API_KEY`, nothing changes — that key is automatically attached to a `default` tenant on startup, and every request/query behaves exactly as it did before this feature existed.
+
+To add more tenants:
+
+```bash
+sentinel tenant create-tenant --name "Acme Corp" --slug acme
+sentinel tenant create-key --tenant acme --label "prod key"
+# prints the plaintext key once — save it, it is never stored or shown again
+
+sentinel tenant list-keys
+sentinel tenant revoke-key <id>
+```
+
+Auth enforcement (401 on a missing/invalid key) is governed by `SENTINEL_API_KEY`, exactly as before — set it to any value to require a key on every request. Once enforcement is on, requests may authenticate with either the legacy env-var key or any active per-tenant key issued via the CLI above.
+
+The dashboard prompts once for an API key (stored in `localStorage`, sent as `X-API-Key`) — leave it blank if your deployment doesn't require auth.
+
+## Observability
+
+**Tracing** — OpenTelemetry, opt-in via a standard OTLP endpoint (works with any backend: Honeycomb, Grafana Cloud, self-hosted Jaeger, etc.). Unset = a no-op tracer with zero runtime cost.
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+OTEL_EXPORTER_OTLP_HEADERS=api-key=your-otlp-backend-key   # optional
+OTEL_SERVICE_NAME=sentinellm-api                             # optional
+```
+
+Each request produces a span tree matching the actual concurrent evaluator chain: `sentinel.chain.input`/`sentinel.chain.output` → one `sentinel.evaluator.{name}` child span per evaluator → `sentinel.llm.call`. A short-circuited evaluator (cancelled because another already flagged the request) shows up in the trace as a cancelled span rather than silently disappearing. Every span carries `sentinel.request_id` and `sentinel.tenant_id`, and the same request ID is echoed in the `X-Request-ID` response header and the `requests` DB row — one ID correlates a trace, a log line, and a DB record.
+
+Try it locally:
+
+```bash
+docker run -d -p 16686:16686 -p 4318:4318 jaegertracing/all-in-one
+# set OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces, restart the API
+# → traces at http://localhost:16686
+```
+
+**Metrics** — `/metrics` now also exposes per-evaluator latency/flag-rate/error-rate (`sentinel_evaluator_*`) and per-LLM-call latency/error-rate (`sentinel_llm_call_*`), alongside the existing whole-request HTTP metrics.
+
+**Alerting** — a built-in periodic checker (no Prometheus/Alertmanager required) evaluates rolling thresholds — LLM error rate, block rate, evaluator failure rate, p95 latency — and POSTs to a webhook when one is breached:
+
+```bash
+SENTINEL_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/...
+```
+
+Thresholds live in `config.yaml` under `observability.alerting`. With no webhook URL configured, the checker still runs and logs breaches — it never requires standing up extra infrastructure.
+
 ## Production Deployment
 
 ```bash
@@ -280,6 +331,16 @@ The production compose file adds:
 - DB and Redis ports bound to `127.0.0.1` (not exposed publicly)
 - No source code volume mounts and no `--reload`
 - Container-level `HEALTHCHECK` via `/health`
+
+### Deploying to Render
+
+`render.yaml` at the repo root is a [Render Blueprint](https://render.com/docs/infrastructure-as-code) — it provisions the API, the dashboard, a managed Postgres database, and a Redis-compatible Key Value store in one shot.
+
+```bash
+# In the Render Dashboard: New → Blueprint → connect this repo
+```
+
+You'll be prompted for every secret (`SENTINEL_API_KEY`, your LLM provider key) during Blueprint creation. The API runs on Render's `standard` plan by default — the ML evaluators (torch, transformers, Detoxify, sentence-transformers) need more than the 512MB `starter` plan gives you. Multiple API replicas are safe to run (`numInstances` in `render.yaml`, commented out by default): the WebSocket feed uses Redis pub/sub fanout specifically so every replica's dashboard connections stay correct regardless of which replica scored a request.
 
 ## Local Development
 
