@@ -36,7 +36,10 @@ class RelevanceEvaluator(BaseEvaluator):
         from sentence_transformers import SentenceTransformer  # noqa: PLC0415
 
         model_id: str = self.config.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
-        self._model = SentenceTransformer(model_id)
+        # low_cpu_mem_usage=False: same meta-tensor fix as the hallucination/
+        # faithfulness evaluators — newer transformers defaults to meta-device
+        # lazy loading, which crashes on .to(device) without this.
+        self._model = SentenceTransformer(model_id, model_kwargs={"low_cpu_mem_usage": False})
 
     async def _run_inference(self, payload: EvalPayload) -> tuple[float, dict | None]:
         input_text = payload.input_text
