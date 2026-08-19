@@ -18,6 +18,9 @@ class RequestRecord:
     id: UUID | None = None
     created_at: datetime | None = None
 
+    # Owning tenant — resolved from the request's API key by APIKeyMiddleware
+    tenant_id: UUID | None = None
+
     # Request metadata
     model: str = ""
     input_hash: str = ""
@@ -74,6 +77,7 @@ class EvalRunRecord:
     id: UUID | None = None
     created_at: datetime | None = None
     completed_at: datetime | None = None
+    tenant_id: UUID | None = None
 
     label: str = ""
     dataset_path: str = ""
