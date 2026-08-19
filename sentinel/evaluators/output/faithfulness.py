@@ -81,7 +81,14 @@ class FaithfulnessEvaluator(BaseEvaluator):
             device: str = self.config.get("device", "auto")
             if device == "auto":
                 device = "cpu"
-            self._model = CrossEncoder(model_id, device=device)
+            # low_cpu_mem_usage=False: newer transformers defaults to loading
+            # weights onto a meta device first, which some sentence-transformers
+            # CrossEncoder versions then fail to materialize ("Cannot copy out
+            # of meta tensor; no data!") when .to(device) runs. Forcing eager
+            # loading avoids it — confirmed against transformers 4.57/torch 2.10.
+            self._model = CrossEncoder(
+                model_id, device=device, automodel_args={"low_cpu_mem_usage": False}
+            )
 
         self._entailment_idx: int = _get_label_index(self._model, "entailment", fallback=1)
 
