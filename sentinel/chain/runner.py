@@ -17,6 +17,25 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT = 3.0  # seconds; overridden at startup from config
 
 
+def _is_actual_block(result: EvalResult) -> bool:
+    """True if a flagged result should short-circuit and cancel sibling evaluators.
+
+    False for pii's action:redact — it flags for logging/redaction but is
+    explicitly non-blocking (proxy.py clears blocked_by for it and continues
+    with the redacted text). Without this check, any request containing
+    detectable PII would race-cancel every other still-running input
+    evaluator — including prompt_injection mid-inference — purely because
+    PII happened to finish first, letting even blatant injection attempts
+    through unscored whenever PII is also present. Mirrors the exact
+    condition proxy.py already applies after the chain returns; this just
+    makes the short-circuit decision itself aware of it, instead of only
+    the block decision downstream.
+    """
+    if result.evaluator_name == "pii" and (result.metadata or {}).get("action") == "redact":
+        return False
+    return True
+
+
 async def _run_with_timeout(
     ev: BaseEvaluator,
     payload: EvalPayload,
@@ -123,7 +142,7 @@ async def run_input_chain(
             alert_window.record_evaluator(errored=False)
             results.append(result)
 
-            if result.flag and blocked_by is None:
+            if result.flag and blocked_by is None and _is_actual_block(result):
                 blocked_by = result
                 chain_span.set_attribute("sentinel.chain.blocked_by", result.evaluator_name)
 
@@ -167,7 +186,7 @@ async def run_input_chain(
                 if result.error is None and result.score is not None:
                     to_cache[ev.name] = {"score": result.score, "metadata": result.metadata}
 
-                if result.flag and blocked_by is None:
+                if result.flag and blocked_by is None and _is_actual_block(result):
                     blocked_by = result
                     chain_span.set_attribute("sentinel.chain.blocked_by", result.evaluator_name)
                     # Cancel remaining tasks — no point running further checks

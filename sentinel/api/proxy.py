@@ -167,14 +167,17 @@ async def chat_completions(
     )
 
     # ── PII redact: flag but do NOT block; swap in the cleaned text ──────────
+    # Looked up from input_results (not blocked_by) because run_input_chain
+    # never treats a redact-configured PII flag as block-worthy in the first
+    # place — see _is_actual_block() in chain/runner.py — so it never becomes
+    # blocked_by to begin with. blocked_by is still cleared here defensively
+    # in case a future evaluator adds its own non-blocking flag semantics.
     pii_redacted_text: str | None = None
-    if (
-        blocked_by
-        and blocked_by.evaluator_name == "pii"
-        and (blocked_by.metadata or {}).get("action") == "redact"
-    ):
-        pii_redacted_text = (blocked_by.metadata or {}).get("redacted_text", input_text)
-        blocked_by = None  # clear block — request continues with redacted text
+    pii_result = next((r for r in input_results if r.evaluator_name == "pii"), None)
+    if pii_result and pii_result.flag and (pii_result.metadata or {}).get("action") == "redact":
+        pii_redacted_text = (pii_result.metadata or {}).get("redacted_text", input_text)
+        if blocked_by is pii_result:
+            blocked_by = None  # clear block — request continues with redacted text
 
     if blocked_by and not shadow_mode:
         latency_total = int((time.monotonic() - total_start) * 1000)
