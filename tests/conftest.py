@@ -46,7 +46,7 @@ async def client():
 
     from sentinel.main import create_app
 
-    with patch("sentinel.evaluators.output.toxicity.Detoxify") as mock_det:
+    with patch("detoxify.Detoxify") as mock_det:
         instance = MagicMock()
         instance.predict.return_value = {
             "toxicity": 0.01,
