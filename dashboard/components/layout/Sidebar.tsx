@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart2, Eye, FlaskConical, LayoutDashboard, Radio, Shield } from "lucide-react";
+import { BarChart2, Eye, FlaskConical, KeyRound, LayoutDashboard, Radio, Shield } from "lucide-react";
+import { clearApiKey } from "@/lib/auth";
 
 const NAV = [
   { href: "/dashboard",        label: "Overview",   icon: LayoutDashboard },
@@ -44,8 +45,18 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-5 py-4 border-t border-[#1a1a1a] text-xs text-zinc-700">
-        v1.0.0
+      <div className="px-5 py-4 border-t border-[#1a1a1a] flex items-center justify-between text-xs text-zinc-700">
+        <span>v1.0.0</span>
+        <button
+          onClick={() => {
+            clearApiKey();
+            window.location.reload();
+          }}
+          title="Change API key"
+          className="text-zinc-700 hover:text-white transition-colors"
+        >
+          <KeyRound size={13} />
+        </button>
       </div>
     </aside>
   );

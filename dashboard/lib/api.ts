@@ -7,8 +7,16 @@ import type {
   ScoreHistoryResponse,
   SummaryMetrics,
 } from "./types";
+import { getApiKey } from "./auth";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+// X-API-Key is omitted entirely when no key is stored — matches the API's
+// own behavior of running unauthenticated when SENTINEL_API_KEY is unset.
+function authHeaders(): Record<string, string> {
+  const apiKey = getApiKey();
+  return apiKey ? { "X-API-Key": apiKey } : {};
+}
 
 async function get<T>(path: string, params?: Record<string, string>): Promise<T> {
   const url = new URL(BASE + path);
@@ -17,7 +25,7 @@ async function get<T>(path: string, params?: Record<string, string>): Promise<T>
       if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, v);
     });
   }
-  const res = await fetch(url.toString(), { cache: "no-store" });
+  const res = await fetch(url.toString(), { cache: "no-store", headers: authHeaders() });
   if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -25,7 +33,7 @@ async function get<T>(path: string, params?: Record<string, string>): Promise<T>
 async function patch<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(BASE + path, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`PATCH ${path} → ${res.status}`);

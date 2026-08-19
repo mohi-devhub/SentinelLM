@@ -1,14 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getApiKey } from "./auth";
 import type { SentinelEvent } from "./types";
 
-const WS_URL =
-  (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000")
-    .replace(/^http/, "ws") + "/ws/feed";
+const WS_BASE =
+  (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/^http/, "ws") +
+  "/ws/feed";
 
 const MAX_EVENTS = 100;
 const RECONNECT_DELAY_MS = 3000;
+
+// Browsers cannot set custom headers on a WebSocket handshake, so the key
+// is passed as a query param instead of X-API-Key — the server mirrors this
+// (see sentinel/api/websocket.py's _resolve_tenant).
+function wsUrl(): string {
+  const apiKey = getApiKey();
+  return apiKey ? `${WS_BASE}?api_key=${encodeURIComponent(apiKey)}` : WS_BASE;
+}
 
 export function useWebSocketFeed() {
   const [events, setEvents] = useState<SentinelEvent[]>([]);
@@ -20,7 +29,7 @@ export function useWebSocketFeed() {
   const connect = useCallback(() => {
     if (unmounted.current) return;
 
-    const ws = new WebSocket(WS_URL);
+    const ws = new WebSocket(wsUrl());
     wsRef.current = ws;
 
     ws.onopen = () => setConnected(true);
