@@ -403,6 +403,7 @@ async def chat_completions(
                 "scores": sentinel_result.scores,
                 "flags": sentinel_result.flags,
                 "latency_ms": sentinel_result.latency_ms,
+                "pii_redacted_text": pii_redacted_text,
             },
         },
     )

@@ -49,6 +49,42 @@ async def test_clean_request_returns_200_with_sentinel_metadata(client, mock_llm
     assert isinstance(sentinel["flags"], list)
     # Toxicity evaluator is enabled in test config; clean response should not flag
     assert "toxicity" not in sentinel["flags"]
+    assert sentinel["pii_redacted_text"] is None
+
+
+@pytest.mark.asyncio
+async def test_pii_redaction_returns_redacted_text(client, mock_llm_response):
+    """action: redact swaps in cleaned text and surfaces it in the response, unblocked."""
+    from sentinel.evaluators.base import EvalResult
+
+    redacted = EvalResult(
+        evaluator_name="pii",
+        score=0.90,
+        flag=True,
+        latency_ms=5,
+        metadata={"action": "redact", "redacted_text": "<PERSON> visited Paris."},
+    )
+
+    with (
+        patch("sentinel.chain.runner.run_input_chain", new_callable=AsyncMock) as mock_chain,
+        patch("sentinel.api.proxy.get_llm_client") as mock_factory,
+    ):
+        mock_chain.return_value = ([redacted], redacted)
+        mock_llm = AsyncMock()
+        mock_llm.chat.return_value = mock_llm_response("Nice to hear from you.")
+        mock_factory.return_value = mock_llm
+
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "llama3.2",
+                "messages": [{"role": "user", "content": "John Doe visited Paris."}],
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["sentinel"]["pii_redacted_text"] == "<PERSON> visited Paris."
 
 
 @pytest.mark.asyncio
