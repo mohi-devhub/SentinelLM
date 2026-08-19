@@ -28,6 +28,15 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
     gemini_api_key: str = Field("", alias="GEMINI_API_KEY")
 
+    # Observability — standard OTel env var names (not SENTINEL_-prefixed) so
+    # any OTLP-compatible backend that autodetects them just works. Empty
+    # endpoint = tracing disabled (default OTel no-op tracer).
+    otel_exporter_endpoint: str = Field("", alias="OTEL_EXPORTER_OTLP_ENDPOINT")
+    otel_exporter_headers: str = Field("", alias="OTEL_EXPORTER_OTLP_HEADERS")
+    otel_service_name: str = Field("sentinellm-api", alias="OTEL_SERVICE_NAME")
+    # Webhook alerting — SENTINEL_-prefixed (this app's own feature, not OTel's).
+    alert_webhook_url: str = Field("", alias="SENTINEL_ALERT_WEBHOOK_URL")
+
     model_config = {"env_file": ".env", "populate_by_name": True}
 
     @property

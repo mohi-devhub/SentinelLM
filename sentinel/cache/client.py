@@ -16,19 +16,21 @@ import json
 from typing import Any
 
 
-def cache_key(input_text: str, config_version: str) -> str:
-    """Return the SHA-256 cache key for this (input, config) pair.
+def cache_key(input_text: str, config_version: str, tenant_id: object) -> str:
+    """Return the SHA-256 cache key for this (tenant, input, config) tuple.
 
     Args:
         input_text: Raw user input string.
         config_version: ``app.config_version`` from config.yaml.
+        tenant_id: Owning tenant's id — scopes the key so one tenant can
+            never read another's cached evaluator scores.
 
     Returns:
-        64-character lowercase hex digest prefixed with ``sentinel:scores:``.
+        64-character lowercase hex digest prefixed with ``sentinel:{tenant_id}:scores:``.
     """
     raw = f"{input_text}|{config_version}"
     digest = hashlib.sha256(raw.encode()).hexdigest()
-    return f"sentinel:scores:{digest}"
+    return f"sentinel:{tenant_id}:scores:{digest}"
 
 
 async def get_cached_scores(
